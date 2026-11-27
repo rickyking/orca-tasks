@@ -1,14 +1,28 @@
 # Agent Tasks for Orca
 
-A task list in [Orca](https://www.onorca.dev) that you and your agents share. You work with it in a
-panel in the right sidebar and a board in a center tab; your agents use the `orca-tasks` command.
-They all read and write one file, `~/.orca-tasks/tasks.json`. When an agent adds a task you see it
-within a couple of seconds, and when you tick one off the agent sees that too. You can also hand a
-task to one of your Orca bots, or start it in its project, in a workspace of its own with a coding agent.
+![Agent Tasks: tasks from your apps flow through a scheduled bot into one board, then out to a bot or a project](docs/screenshots/cover.png)
+
+Your tasks are spread over many apps: reminders on your phone, requests in chat, tickets in a
+tracker, flagged email, action items in meeting notes. Orca's own task view works with GitHub
+issues and Linear. Agent Tasks gives everything else one place in [Orca](https://www.onorca.dev),
+and lets your agents work on it from both ends:
+
+1. **Collect.** An Orca bot runs on a schedule, reads the apps it has tools for, and adds what it
+   finds with the `orca-tasks` CLI. Each task keeps a link to where it came from, and `--dedupe`
+   adds it only once, however often the bot runs. See
+   [Collect tasks from anywhere](#collect-tasks-from-anywhere).
+2. **One board.** The tasks land in one list: a panel in the right sidebar and a board in a center
+   tab, with statuses of your own, due dates, reminders and checklists. You add and edit tasks
+   there too.
+3. **Dispatch.** From the same view, hand a task to one of your Orca bots, or start it in its
+   project: a workspace of its own with Claude Code or Codex, the task as its first prompt.
+4. **Status comes back.** The task shows the bot's state and latest reply, or what the project's
+   agent is doing. Agents finish tasks with the same CLI, and you see it on the board.
+
+Everything reads and writes one file, `~/.orca-tasks/tasks.json`. When a bot adds a task you see it
+within a couple of seconds, and when you tick one off the bot sees that too.
 
 ![The board: a column per status, with due days, priorities, projects and a bot at work](docs/screenshots/board-light.png)
-
-![A task's details in a dark theme: due day and time, priority, project, checklist and notes](docs/screenshots/details-dark.png)
 
 ## What it does
 
@@ -54,7 +68,7 @@ Everything is described in detail in the [reference](docs/reference.md).
 orca plugin install rickyking/orca-tasks
 ```
 
-This installs the highest `vX.Y.Z` release tag (`@v0.6.2` picks one). The plugin runs code of its own, so
+This installs the highest `vX.Y.Z` release tag (`@v0.6.3` picks one). The plugin runs code of its own, so
 Orca first stops with `approval_required`. It lists the access the plugin asks for (see below)
 and prints a fingerprint. Read the list, then run the command it prints:
 `orca plugin install rickyking/orca-tasks --approve <fingerprint>`. It installs as
@@ -108,6 +122,49 @@ Besides the capabilities, the worker runs two programs on your machine:
   The bot's agent then works with it as it works with any message.
 - **Send to the project** makes the task the first prompt of a coding agent in a workspace the
   plugin creates, as Orca's own workspace dialog would.
+
+## Collect tasks from anywhere
+
+Agent Tasks has no connectors of its own. The collecting is done by an Orca bot, with whatever tools
+you have given it: Orca's connectors, MCP servers, command-line tools. If the bot can read an app,
+it can turn what it reads into tasks. The plugin's part is the CLI it writes them with (see
+[For agents](#for-agents) for where it lives):
+
+- `orca-tasks add "<title>" --source "<link or id>" --dedupe --json` adds a task once per source.
+  Run it again with the same source and it returns the task already there (or the one it was
+  merged into) instead of adding another. When the item has a web link, use it as the source: the
+  task's details show it as a link back to the original.
+- `--due`, `--priority`, `--project`, `--tag` and `--notes` fill in the rest. A tag per app
+  (`--tag mail`, `--tag chat`) lets you filter by where tasks came from.
+- `orca-tasks list --source "<link>" --all --json` finds the task for one item, and
+  `orca-tasks list --done-since -24h --json` what was finished, for a bot that closes or answers
+  items back where they came from.
+
+To run the bot on a schedule, make it an Orca automation. For example, from the CLI:
+
+```sh
+orca automations create --name "Collect tasks" --bot <bot> \
+  --trigger weekdays --time 08:30 --prompt "<a prompt like the ones below>"
+```
+
+Two example prompts. The apps in them are examples: each works only if the bot has tools for those
+apps, and the bot, not the plugin, does the reading.
+
+> Read my chat mentions and direct messages and my flagged email from the last day. For each one
+> that asks me to do something, add a task with
+> `orca-tasks add "<short title>" --source "<the message's link>" --tag chat --dedupe --json`
+> (`--tag mail` for email), with who asked and a one-line quote in `--notes`. Set `--due` only when
+> the message names a day. Skip what was already answered. Reply with the tasks you added.
+
+> Read the meeting notes from the last day and my reminders list. Add each action item that is
+> mine as a task, with the note's link plus the item number (or the reminder's id) as `--source`,
+> `--tag meeting` or `--tag reminders`, and `--dedupe`. Then run
+> `orca-tasks list --done-since -24h --json` and mark the matching reminders complete.
+
+A bot that can only append text can write lines such as
+`- [ ] Call the bank !high #mail source:mail:<id>` to `~/.orca-tasks/inbox.md` instead; the plugin
+takes them in (see [the reference](docs/reference.md#for-agents)). Lines in the inbox are not
+deduped, so a bot that runs on a schedule should use `add --dedupe` when it can.
 
 ## For agents
 

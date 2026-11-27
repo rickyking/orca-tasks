@@ -32,7 +32,7 @@ import { fromHostApi, matchOrcaProject, summarizeProjects, type OrcaProject } fr
 import { writeProjectsCache } from './core/orca-projects.ts'
 import type { BotOffer, ProjectOffer, ProjectPrefs, SendPrefs, TaskPaths } from './protocol.ts'
 
-export const VERSION = '0.6.2'
+export const VERSION = '0.6.3'
 const TICK_MS = 2_000
 const STATUS_ITEM = 'today'
 const SIMPLE_TODO_SETTING = 'takeSimpleTodoInbox'

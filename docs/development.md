@@ -53,7 +53,7 @@ typings) out of commits; it is in `.gitignore`.
 ```
 assets/icon.png         the plugin icon
 bin/orca-tasks          the CLI, run from a checkout
-docs/                   this file, the reference, and the screenshots
+docs/                   this file, the reference, the screenshots, and the flyer (flyer/)
 src/
 ├── core/               shared by everything: types, days and times, the Simple Todo line
 │                       format, pure task operations, statuses, checklists, sections, bots
@@ -80,6 +80,14 @@ Chrome, never from a real task list:
 AGENT_TASKS_README_SHOTS=docs/screenshots npm run test:browser
 ```
 
+The cover (`docs/screenshots/cover.png`) is the flyer, `docs/flyer/flyer.html`: one self-contained
+page with made-up tasks, drawn at 1600 × 1000. After changing it, render the cover again in
+headless Chrome:
+
+```sh
+docs/flyer/render.sh
+```
+
 ## Releasing
 
 1. Bump `version` in `orca-plugin.json` and `package.json`, and `VERSION` in `src/cli.ts` and
@@ -89,7 +97,7 @@ AGENT_TASKS_README_SHOTS=docs/screenshots npm run test:browser
    An update that adds a capability, command, panel, status bar item or event, or raises the
    execution profile, asks every user to approve it again.
 4. Merge to `main`, then tag that commit and push the tag:
-   `git tag -a v0.6.2 -m v0.6.2 && git push origin v0.6.2`. `orca plugin install
+   `git tag -a v0.6.3 -m v0.6.3 && git push origin v0.6.3`. `orca plugin install
    rickyking/orca-tasks` installs the highest `vX.Y.Z` tag.
 5. The repository needs the `orca-plugin` topic once
    (`gh repo edit rickyking/orca-tasks --add-topic orca-plugin`); the listing is at

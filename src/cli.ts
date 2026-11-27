@@ -17,7 +17,7 @@ import { StoreError, TaskStore } from './core/store.ts'
 import { activeHandoff, findTask, isClosed, lastChat, TaskInputError, TaskNotFoundError } from './core/tasks.ts'
 import { PRIORITIES, PROJECT_AGENTS, SEND_TYPES, type ProjectAgent, STATUS_COLORS, STATUS_KINDS, STATUSES, VIEWS, type NewTask, type SendType, type StatusColor, type StatusDef, type StatusKind, type TaskStatus, type Priority, type Task, type TaskFilter, type TaskPatch, type View } from './core/types.ts'
 
-export const VERSION = '0.6.2'
+export const VERSION = '0.6.3'
 
 export interface CliIo {
   stdout: (text: string) => void

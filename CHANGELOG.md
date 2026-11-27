@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.3
+
+**Collect tasks from anywhere**
+
+No change to what the plugin does, its data or the access it asks for.
+
+- The README and the manifest's description tell what the plugin is for: Orca's own task view
+  works with GitHub issues and Linear, and Agent Tasks gathers tasks from every other app into one
+  board. An Orca bot collects them on a schedule, you hand each one to a bot or start it in its
+  project from the board, and the bot's or agent's state comes back to the task.
+- README: a section, **Collect tasks from anywhere**, on how a scheduled Orca automation uses
+  `orca-tasks add --source <link> --dedupe` to pull tasks from other apps, with two example
+  prompts. The apps are examples the bot reads with its own tools; the plugin has no connectors.
+- A flyer, `docs/flyer/flyer.html` (one self-contained page, light and dark, made-up tasks), is
+  the plugin page's cover: `docs/flyer/render.sh` renders it to `docs/screenshots/cover.png`. It
+  embeds Overpass and Overpass Mono (SIL Open Font License 1.1); `THIRD_PARTY_NOTICES.md` carries
+  their licence.
+
 ## 0.6.2
 
 **Prepared for publishing**

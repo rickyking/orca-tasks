@@ -3,8 +3,8 @@
   "manifestVersion": 2,
   "id": "agent-tasks",
   "name": "Agent Tasks",
-  "version": "0.6.2",
-  "description": "A task list you and your agents share: a sidebar panel and a board with statuses of your own, due dates, reminders and checklists; a CLI agents use to list, add and complete the same tasks; and a button that hands a task to an Orca bot or starts it in a new workspace with a coding agent.",
+  "version": "0.6.3",
+  "description": "Scheduled bots collect tasks from your other apps into one board in Orca. From it, hand any task to a bot or start it in its project with a coding agent.",
   "license": "MIT",
   "author": {
     "name": "rickyking",
@@ -15,7 +15,7 @@
   "icon": "assets/icon.png",
   "cover": {
     "path": "docs/screenshots/cover.png",
-    "alt": "The Agent Tasks board: a column per status with made-up tasks, their due days, priorities, projects, and a bot at work on one."
+    "alt": "Flyer: tasks from chat, email, a tracker, reminders and notes flow via a scheduled bot into one board, then out to a bot or a coding agent. Made-up tasks."
   },
   "screenshots": [
     {
