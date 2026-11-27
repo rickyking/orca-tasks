@@ -20,6 +20,11 @@ test('the project a task goes to: an Orca Git project, else why not', () => {
   assert.match((projectTarget(t(null), ORCA, matchOrcaProject) as { error: string }).error, /has no project/)
   assert.match((projectTarget(t('elsewhere'), ORCA, matchOrcaProject) as { error: string }).error, /not one of your Orca projects/)
   assert.match((projectTarget(t('Notes'), ORCA, matchOrcaProject) as { error: string }).error, /folder project/)
+  // Another project, picked in the send menu: the task's own does not matter.
+  assert.equal((projectTarget(t(null), ORCA, matchOrcaProject, 'online-store') as { project: OrcaProject }).project.id, 'p-web')
+  assert.equal((projectTarget(t('elsewhere'), ORCA, matchOrcaProject, 'online-store') as { project: OrcaProject }).project.id, 'p-web')
+  assert.match((projectTarget(t('online-store'), ORCA, matchOrcaProject, 'Notes') as { error: string }).error, /folder project/)
+  assert.match((projectTarget(t('online-store'), ORCA, matchOrcaProject, 'gone') as { error: string }).error, /^gone is not one of your Orca projects/)
 })
 
 test('the workspace name: the title in a few words and the start of the id', () => {
@@ -34,6 +39,7 @@ test('the first prompt: the instruction, the task, its source and notes, cut to 
   const prompt = projectPrompt(task, { note: 'Write a failing test first', cli: '/h/bin/orca-tasks' })
   assert.match(prompt, /^Your owner sent you this task from Agent Tasks[^\n]*a new branch of online-store\.\n\nWrite a failing test first\n\nTask: Fix the login bug\nDue: 2026-11-28\nPriority: high\nTags: #bug\nSource: chat:msg_1\nTask id: t-2ec27hs8\n\nNotes:\nSteps:\n- \[ \] reproduce\n\nTo read the task again: \/h\/bin\/orca-tasks get t-2ec27hs8 --json/)
   assert.ok(!projectPrompt(task, { notes: false }).includes('Notes:'))
+  assert.match(projectPrompt(task, { project: 'docs-site' }), /a new branch of docs-site\./, 'sent to another project: that one is named')
   const huge = makeTask({ title: 'Big', notes: 'x'.repeat(10_000) }, 't-big12345', NOW)
   const cut = projectPrompt(huge)
   assert.ok(cut.length <= PROMPT_MAX, `${cut.length}`)

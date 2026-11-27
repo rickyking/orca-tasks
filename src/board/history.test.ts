@@ -2,22 +2,45 @@
 // through, Forward, and that every event of those buttons is stopped (the frame never navigates).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { backAction, forwardAction, MOUSE_BACK, MOUSE_FORWARD, mouseNav, ViewHistory, type View } from './history.ts'
-import { keyAction, shortcutList, type KeyScreen } from './keys.ts'
+import { backAction, forwardAction, MOUSE_BACK, MOUSE_FORWARD, MOUSE_NAV_EVENTS, MouseNav, ViewHistory, type View } from './history.ts'
+import { keyAction, shortcutList, type KeyPress, type KeyScreen } from './keys.ts'
 
 const SCREEN: KeyScreen = { sidebar: false, menu: false, help: false, form: null, suggestions: false, draft: false, armed: false, details: false, settings: false, picked: false }
 const view = (more: Partial<View> = {}): View => ({ view: 'list', filter: 'all', project: '', selected: null, ...more })
 
-test('the back and forward buttons: every event is stopped, the step is taken on release', () => {
+test('the back and forward buttons: every event is stopped, one step per press, from whichever events arrive', () => {
   assert.equal(MOUSE_BACK, 3, "an MX Master's thumb back button")
   assert.equal(MOUSE_FORWARD, 4)
-  for (const type of ['mousedown', 'auxclick']) {
-    assert.deepEqual(mouseNav(type, 3), { prevent: true, step: null }, `${type}: stopped, no step (no double step)`)
-    assert.deepEqual(mouseNav(type, 4), { prevent: true, step: null })
+  const steps = (events: [string, number, number][]) => {
+    const nav = new MouseNav()
+    return events.map(([type, button, time]) => nav.event(type, button, time))
   }
-  assert.deepEqual(mouseNav('mouseup', 3), { prevent: true, step: 'back' })
-  assert.deepEqual(mouseNav('mouseup', 4), { prevent: true, step: 'forward' })
-  for (const button of [0, 1, 2]) for (const type of ['mousedown', 'mouseup', 'auxclick']) assert.deepEqual(mouseNav(type, button), { prevent: false, step: null }, `button ${button} is left alone`)
+  // All five events of one press: stopped, and one step, on the first release.
+  const full = steps(MOUSE_NAV_EVENTS.map((type, i) => [type, 3, 100 + i]))
+  assert.ok(full.every((r) => r.prevent))
+  assert.deepEqual(full.map((r) => r.step), [null, null, 'back', null, null])
+  // A cancelled pointerdown drops the mouse events: the pointer events alone still step.
+  assert.deepEqual(steps([['pointerdown', 3, 0], ['pointerup', 3, 5]]).map((r) => r.step), [null, 'back'])
+  // Only the mouse events (an older frame), or only auxclick (some drivers): a step too.
+  assert.deepEqual(steps([['mousedown', 4, 0], ['mouseup', 4, 5], ['auxclick', 4, 6]]).map((r) => r.step), [null, 'forward', null])
+  assert.deepEqual(steps([['auxclick', 3, 0]]).map((r) => r.step), ['back'])
+  // Two presses in a row are two steps; release events alone count again after a moment.
+  assert.deepEqual(steps([['pointerdown', 3, 0], ['pointerup', 3, 5], ['mouseup', 3, 6], ['pointerdown', 3, 50], ['pointerup', 3, 55]]).map((r) => r.step), [null, 'back', null, null, 'back'])
+  assert.deepEqual(steps([['auxclick', 3, 0], ['auxclick', 3, 100], ['auxclick', 3, 1000]]).map((r) => r.step), ['back', null, 'back'])
+  for (const button of [0, 1, 2]) for (const type of MOUSE_NAV_EVENTS) assert.deepEqual(new MouseNav().event(type, button, 0), { prevent: false, step: null }, `button ${button} is left alone`)
+})
+
+test('Cmd+[ and Cmd+] (what mouse software on macOS sends for the thumb buttons), and Cmd+Left / Cmd+Right, are Back and Forward', () => {
+  const press = (key: string, more: Partial<KeyPress> = {}) => keyAction({ key, meta: true, ctrl: false, alt: false, shift: false, target: 'page', ...more }, SCREEN)
+  assert.deepEqual(press('['), { leave: false, action: 'back' })
+  assert.deepEqual(press(']'), { leave: false, action: 'forward' })
+  assert.deepEqual(press('ü', { code: 'BracketLeft' }), { leave: false, action: 'back' }, 'the physical key, on another layout')
+  assert.deepEqual(press('[', { target: 'field', field: 'details' }), { leave: true, action: 'back' }, 'from a field: it is left (and saved) first')
+  assert.deepEqual(press('ArrowLeft', { target: 'task' }), { leave: false, action: 'back' })
+  assert.deepEqual(press('ArrowRight'), { leave: false, action: 'forward' })
+  assert.deepEqual(press('ArrowLeft', { target: 'field', field: 'details' }), { leave: false, action: 'none' }, 'in a field Cmd+Left moves the caret')
+  assert.equal(press('[', { ctrl: true }).action, 'none')
+  assert.equal(press('[', { meta: false }).action, 'none', '[ alone is not a shortcut')
 })
 
 test('Back closes what is on top, as Esc does, before it goes back a view', () => {
@@ -44,7 +67,7 @@ test('the Browser Back / Forward keys are Back and Forward, also in a field', ()
   assert.deepEqual(press('BrowserBack', 'field'), { leave: true, action: 'back' }, 'a details field saves as it is left')
   for (const sidebar of [true, false]) {
     const keys = shortcutList(sidebar).map(([k]) => k)
-    assert.ok(keys.includes('Mouse back button') && keys.includes('Mouse forward button'), 'listed under ?')
+    assert.ok(keys.includes('Mouse back button, Cmd+[') && keys.includes('Mouse forward button, Cmd+]'), 'listed under ?')
   }
 })
 

@@ -1,5 +1,6 @@
-// The mouse's back and forward buttons (and the Browser Back / Forward keys) in the sidebar and
-// on the board. "Back" means the view before, not the page before: it closes what is on top (the
+// The mouse's back and forward buttons (and the Browser Back / Forward keys, and Cmd+[ / Cmd+]
+// and Cmd+Left / Cmd+Right, which mouse software on macOS sends for them) in the sidebar and on
+// the board. "Back" means the view before, not the page before: it closes what is on top (the
 // menu, the shortcuts, a form, the open task, Statuses, the picked tasks, as Esc does), then goes
 // back through the views shown before (the filter, the project, list or board). The page keeps
 // that history itself; it never adds entries to the frame's browser history, so Orca's own back
@@ -105,10 +106,35 @@ export function forwardAction(screen: KeyScreen, canGoForward: boolean): KeyActi
   return canGoForward ? 'view-forward' : 'none'
 }
 
-/** A mouse event of the back or forward button: whether to stop the browser's own handling
- *  (`prevent`, on every event of those buttons, so the frame is never navigated) and the step to
- *  take (on the release only, as browsers do, so a press does not count twice). */
-export function mouseNav(type: string, button: number): { prevent: boolean; step: 'back' | 'forward' | null } {
-  if (button !== MOUSE_BACK && button !== MOUSE_FORWARD) return { prevent: false, step: null }
-  return { prevent: true, step: type === 'mouseup' ? (button === MOUSE_BACK ? 'back' : 'forward') : null }
+/** The events one press of a thumb button can arrive as, in this order. Chromium sends all five,
+ *  but a frame does not always get all of them: a cancelled pointerdown drops the mousedown and
+ *  mouseup after it, and some mice and drivers give only the pointer events or only auxclick. */
+export const MOUSE_NAV_EVENTS = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'auxclick'] as const
+
+const RELEASES: ReadonlySet<string> = new Set(['pointerup', 'mouseup', 'auxclick'])
+/** Release events this close to the step taken belong to the same press. */
+const SAME_PRESS_MS = 400
+
+/**
+ * The back and forward buttons, from whichever of their events arrive. Every event of those
+ * buttons is to be stopped (`prevent`), so the frame is never navigated; the step is taken once
+ * per press, on the first release event that arrives (pointerup, mouseup or auxclick), as browsers
+ * go back on release. A press event after a step starts the next press.
+ */
+export class MouseNav {
+  private stepped = new Map<number, number>()
+
+  /** What to do with event `type` of mouse button `button`, at `time` (ms, `event.timeStamp`). */
+  event(type: string, button: number, time: number): { prevent: boolean; step: 'back' | 'forward' | null } {
+    if (button !== MOUSE_BACK && button !== MOUSE_FORWARD) return { prevent: false, step: null }
+    if (!RELEASES.has(type)) {
+      // A press: the next release is a step of its own.
+      this.stepped.delete(button)
+      return { prevent: true, step: null }
+    }
+    const last = this.stepped.get(button)
+    if (last !== undefined && time - last >= 0 && time - last < SAME_PRESS_MS) return { prevent: true, step: null }
+    this.stepped.set(button, time)
+    return { prevent: true, step: button === MOUSE_BACK ? 'back' : 'forward' }
+  }
 }

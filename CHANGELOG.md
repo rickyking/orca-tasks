@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.6.4
+
+**Send from ▷ on a task; the mouse back button on macOS**
+
+No change to the plugin's data or the access it asks for.
+
+- ▷ on a task's row or card (shown on hover or keyboard focus) opens a small menu by the button,
+  without opening the task. **Bots**: the bot the send form would pick first (the one chosen last
+  for this project, else the project's bot, else Orca), then the others; a paused bot is greyed
+  out. **Projects**: the task's own project first when it is one of your Orca Git projects, then
+  your other Orca Git projects. One click, or the arrows and Enter, sends at once with the send
+  forms' usual choices: to the bot's Home Chat as a handoff, or to the project as a workspace of
+  its own with the coding agent chosen there last (Claude Code at first). The task moves to In
+  Progress and the bar at the top says what happened. **Only move to In Progress** moves it
+  without sending. Esc or a click elsewhere closes the menu, and the keyboard goes back to the
+  row. The forms in the details stay for an instruction, a question or another chat.
+- A task a bot has (a handoff not taken back), or a closed one, keeps the plain ▷: it moves the
+  task to In Progress, as before.
+- When a card's icons do not all fit, ▷ comes right after ✓ (Cancelled moves to **…**), so cards
+  show it too.
+- A workspace can start in another of your Orca projects than the task's own:
+  `tasks.projectOffer` and `tasks.sendToProject` take an optional `project`, and the choices are
+  remembered for that project. The task keeps its own project.
+- The mouse back and forward buttons work from whichever events reach the page. Until 0.6.3 the
+  page went back only on the `mouseup` of button 3 or on the Browser Back key. Logi Options+ on
+  macOS often sends its Back action as the key Cmd+[ instead, and a frame does not always get the
+  mouse events of button 3 (only the pointer events, or only `auxclick`), so nothing happened.
+  The page listens on the window, before anything else, for `pointerdown`, `mousedown`,
+  `pointerup`, `mouseup` and `auxclick` of buttons 3 and 4, stops all of them, and steps once per
+  press on the first release that arrives. Cmd+[ and Cmd+] (also from a field) and Cmd+Left and
+  Cmd+Right (not in a field, where they move the caret) are Back and Forward too.
+- To see what a mouse sends, the page logs `agent-tasks nav` lines to the console of its frame
+  for buttons 3 and up and for every key it takes as Back or Forward; `agentTasksDebugNav(true)`
+  in that console (or `?debug-nav`) logs every mouse button and every key with Cmd, Ctrl or Alt.
+  A swipe gesture never reaches the page.
+- After the list redraws (a change from the worker, an agent or the CLI), the keyboard stays on
+  the task's row or card it was on.
+- Tests: the send menu's choices and order (`src/board/send-menu.test.ts`), a project other than
+  the task's own through the worker, and in Chrome: opening the menu, choosing a bot, choosing a
+  project with the keyboard, Esc, a click elsewhere, a task with a bot, and a card on the board in
+  the dark theme; the back button as pointer events only, mouse events only, `auxclick` only, and
+  Cmd+[, Cmd+] and Cmd+Left. Screenshots of the menu from demo data:
+  `docs/screenshots/send-menu-light.png` and `send-menu-dark.png`.
+
 ## 0.6.3
 
 **Collect tasks from anywhere**

@@ -20,13 +20,15 @@ export const QUICK_ROOM = { sidebar: 4, card: 3, list: 6 } as const
 /**
  * The statuses a task in `current` gets as icons, at most `room`, in the person's order, and the
  * ones left for the "…" menu. When they do not all fit, the first done, on-hold and cancelled
- * statuses (Done, Pending, Cancelled) come first, then the others in order.
+ * statuses (Done, Pending, Cancelled) come first, then the others in order. `send` is the status
+ * whose icon opens the send menu (In Progress, for a task that can be sent): it comes right after
+ * Done, so a card shows it too.
  */
-export function quickStatuses(statuses: readonly StatusDef[], current: string, room: number): { shown: StatusDef[]; more: StatusDef[] } {
+export function quickStatuses(statuses: readonly StatusDef[], current: string, room: number, send: string | null = null): { shown: StatusDef[]; more: StatusDef[] } {
   const others = statuses.filter((s) => s.id !== current)
   if (others.length <= room) return { shown: others, more: [] }
   const first = (kind: StatusDef['kind']) => others.find((s) => s.kind === kind)
-  const wanted = [first('done'), first('hold'), first('cancelled'), ...others].filter((s): s is StatusDef => s !== undefined)
+  const wanted = [first('done'), others.find((s) => s.id === send), first('hold'), first('cancelled'), ...others].filter((s): s is StatusDef => s !== undefined)
   const picked = new Set<string>()
   for (const s of wanted) if (picked.size < room) picked.add(s.id)
   return { shown: others.filter((s) => picked.has(s.id)), more: others.filter((s) => !picked.has(s.id)) }

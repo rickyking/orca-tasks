@@ -255,7 +255,9 @@ Besides a bot, a task can go to its **project**: Orca starts a new workspace the
 and worktree of the project) with a coding agent, and the agent's first prompt is the task.
 
 - **Where**: the task's project must be one of your Orca projects, and a Git one (Orca starts
-  workspaces only in Git projects). The workspace is named after the task: its title in a few
+  workspaces only in Git projects). The send menu (▶ on a task, see
+  [The send menu](#the-send-menu)) can also start it in any other of your Orca Git projects; the
+  task keeps its own project, and the choices are remembered for the project it went to. The workspace is named after the task: its title in a few
   words and the start of its id (`fix-the-login-bug-2ec2`).
 - **Which agent**: Claude Code (`claude`, the default) or Codex (`codex`).
 - **What it gets**: your instruction, then the title, due, priority, tags, source(s) and task id,
@@ -390,16 +392,40 @@ keyboard focus, shows small icon buttons at its right edge, laid over it so noth
 - **One icon per status** the task can move to (all of yours but its own), in your order, with
   your status's name as its tooltip: ✓ for a done status, a clock for an on-hold one, ✕ for a
   cancelled one, ▶ for In Progress and ○ for another open one. A click moves the task there, as
-  the status menu does, and never opens it. Moving to an on-hold status (Pending) puts it on hold
+  the status menu does, and never opens it; ▶ on an open task no bot has opens the send menu
+  instead (below). Moving to an on-hold status (Pending) puts it on hold
   as before, waiting on nobody yet: **Waiting on** in its details says on whom.
 - **When they do not all fit** (a sidebar row takes 4, a card 3, a board list row 6), your first
-  done, on-hold and cancelled statuses (Done, Pending, Cancelled) come first; the others go to
-  **…**.
+  done, on-hold and cancelled statuses (Done, Pending, Cancelled) come first, with ▶ right after
+  Done when it opens the send menu; the others go to **…**.
 - **…** lists those statuses and the other actions: **Open**, **Send to a bot…**, **Send to the
   project…** (a task with a project), **Merge…** and **Pick for a merge**.
 - Keys for the same, on the task under the cursor (or the open one): **X** or **Space** done,
   **P** Pending (your first on-hold status; P again takes it off hold), **C** Cancelled (your
   first cancelled status; C again reopens it). Without a cancelled status, C says so.
+
+### The send menu
+
+▶ (In Progress) on an open task that no bot has opens a menu by the button; the task stays
+closed. It lists:
+
+- **Bots**: the one the send form would pick first (the bot chosen last for this project, else
+  the project's bot, else Orca), then the others, as `orca bot list` gives them. A paused bot is
+  greyed out. They come from Orca a moment after the menu opens.
+- **Projects**: the task's own project first when it is one of your Orca Git projects, then your
+  other Orca Git projects (folder projects take no workspaces; hidden ones are left out).
+- **Only move to In Progress**: the move ▶ made before, without sending.
+
+A click, or the arrows (Home, End) and Enter, sends at once with the forms' usual choices: to a
+bot's Home Chat as a handoff, with the notes unless this project's last send left them out; or to
+a project as a workspace of its own with the agent, notes and **Show the workspace in Orca**
+chosen there last (Claude Code at first). The task moves to In Progress, and the bar at the top
+says "Sending…" and then what happened, or why not. Esc or a click elsewhere closes the menu, and
+the keyboard goes back to the row or card. For an instruction, a question, a status message or
+another chat, use the forms in the task's details.
+
+A task a bot has (a handoff not taken back) and a closed task keep the plain ▶: it moves the task
+to In Progress.
 
 ## Shortcuts
 
@@ -437,10 +463,16 @@ focus (click in it first), and Orca's Settings → Shortcuts does not list them.
 | V | List or board (the board) |
 | Cmd+Enter (Ctrl+Enter) | In a field of the details (notes, title, tags): save it and stay. In a send form: send |
 | Esc | Close what is on top: the status menu, the shortcuts list, a send or merge form, the merge suggestions, the details, Statuses; then clear the picked tasks |
-| Mouse back button | Back: close what is on top, as Esc does (the details first, then a form or menu on top of them); then go back to the view before: the Show filter, the project, list or board (the board). A Logitech MX Master's thumb button, or any mouse's button 4 ("back"); the Browser Back key too |
-| Mouse forward button | Forward again: the view Back left, or the task it closed |
+| Mouse back button, Cmd+[ | Back: close what is on top, as Esc does (the details first, then a form or menu on top of them); then go back to the view before: the Show filter, the project, list or board (the board). A Logitech MX Master's thumb button, or any mouse's button 4 ("back"), whichever of its pointer, mouse or `auxclick` events arrive (one step per press); the Browser Back key, Cmd+[ (also in a field) and Cmd+Left (not in a field) too |
+| Mouse forward button, Cmd+] | Forward again: the view Back left, or the task it closed; Cmd+Right too (not in a field) |
 | ? | Show or hide the list of these keys |
 
+- **When the mouse's back button does nothing**: mouse software can send it as a key, a mouse
+  button or a swipe, and a swipe never reaches the page. The page logs a line starting
+  `agent-tasks nav` to the console of its frame for buttons 3 and up and for every key it takes as
+  Back or Forward; run `agentTasksDebugNav(true)` in that console (or open it with `?debug-nav`)
+  to log every mouse button and every key with Cmd, Ctrl or Alt, and `agentTasksDebugNav(false)`
+  to stop.
 - **Typing is never a shortcut**: while the focus is in a text field, a select or a checkbox, every
   key is the field's, except Esc and Cmd/Ctrl+Enter. A focused button takes Enter and Space.
 - **Esc does not lose what you typed**: in a field of the details (title, notes, tags, waiting on)

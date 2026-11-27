@@ -37,3 +37,11 @@ test('P and C: to the first on-hold or cancelled status, and back to the first o
   assert.equal(keyTarget(statuses, 'pending', 'hold')?.id, 'todo', 'P again takes it off hold')
   assert.equal(keyTarget(statuses, 'cancelled', 'cancelled')?.id, 'todo', 'C again reopens it')
 })
+
+test('the send icon (In Progress, for a task that can be sent) comes right after Done when they do not fit', () => {
+  const card = quickStatuses(statuses, 'todo', QUICK_ROOM.card, 'in-progress')
+  assert.deepEqual([ids(card.shown), ids(card.more)], [['in-progress', 'pending', 'done'], ['cancelled']])
+  assert.deepEqual(ids(quickStatuses(statuses, 'pending', QUICK_ROOM.card, 'in-progress').shown), ['in-progress', 'done', 'cancelled'])
+  assert.deepEqual(ids(quickStatuses(statuses, 'todo', QUICK_ROOM.sidebar, 'in-progress').shown), ['in-progress', 'pending', 'done', 'cancelled'], 'all fit: the order is the person\'s')
+  assert.deepEqual(ids(quickStatuses(statuses, 'in-progress', QUICK_ROOM.card, 'in-progress').shown), ['pending', 'done', 'cancelled'], 'already In Progress: the usual three')
+})

@@ -556,7 +556,25 @@ test('the mouse back and forward buttons: back closes the task, then goes back a
   // Every event of those buttons is stopped by the page (defaultPrevented), so the browser does
   // not take it as "go back" in the frame. (The page's listener comes first on the window, in the
   // capture phase, and stops it there: this one is beside it.)
-  const listen = `window.__thumb = []; for (const type of ['mousedown', 'mouseup', 'auxclick']) window.addEventListener(type, (e) => { if (e.button > 2) window.__thumb.push([type, e.button, e.defaultPrevented]) }, true)`
+  const listen = `window.__thumb = []; for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'auxclick']) window.addEventListener(type, (e) => { if (e.button > 2) window.__thumb.push([type, e.button, e.defaultPrevented]) }, true)`
+  // One press of the back button as only some of its events, sent to the row under the pointer:
+  // what a frame gets when the others are lost on the way.
+  const partial = async (types: string[], button = 3) => {
+    await browser.eval(`(() => {
+      const el = document.querySelector('.row') ?? document.body
+      for (const type of ${JSON.stringify(types)}) {
+        const Kind = type.startsWith('pointer') ? PointerEvent : MouseEvent
+        el.dispatchEvent(new Kind(type, { button: ${button}, buttons: type.endsWith('down') ? ${button === 3 ? 8 : 16} : 0, bubbles: true, cancelable: true, composed: true, pointerType: 'mouse' }))
+      }
+    })()`)
+    // Release events this close to a step count as the same press.
+    await sleep(450)
+  }
+  const cmd = async (key: string, code: string, keyCode: number) => {
+    await browser.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: keyCode, modifiers: 4 })
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode, modifiers: 4 })
+    await sleep(150)
+  }
   const base = `http://127.0.0.1:${port}`
   try {
     // about:blank is the entry before the page: a back that got through would land there.
@@ -568,9 +586,10 @@ test('the mouse back and forward buttons: back closes the task, then goes back a
     assert.equal(await pane(), 'Send the board memo')
     await thumb('back')
     assert.equal(await pane(), null, 'back closes the open task, as Esc does')
-    // (Chrome sends auxclick for these buttons on some platforms only; when it does, it is stopped too.)
+    // Every event of the press is stopped. (The page cancels pointerdown, so Chrome sends no
+    // mousedown and mouseup after it; auxclick comes on some platforms only.)
     const seen = await browser.eval<[string, number, boolean][]>('window.__thumb')
-    assert.deepEqual(seen.filter(([type]) => type !== 'auxclick'), [['mousedown', 3, true], ['mouseup', 3, true]])
+    assert.deepEqual(seen.filter(([type]) => type.startsWith('pointer')), [['pointerdown', 3, true], ['pointerup', 3, true]])
     assert.ok(seen.every(([, , prevented]) => prevented), JSON.stringify(seen))
     await thumb('forward')
     assert.equal(await pane(), 'Send the board memo', 'forward opens it again')
@@ -603,6 +622,30 @@ test('the mouse back and forward buttons: back closes the task, then goes back a
     assert.deepEqual([await browser.eval(`!!document.querySelector('.bot-box')`), await pane()], [false, 'Load the sample data'])
     await thumb('back')
     assert.equal(await pane(), null)
+
+    // Whichever events of a press arrive, one press is one step back.
+    await setShow('today')
+    await setShow('overdue')
+    await setShow('upcoming')
+    await partial(['pointerdown', 'pointerup'])
+    assert.equal(await shown(), 'overdue', 'the pointer events alone')
+    await partial(['mousedown', 'mouseup', 'auxclick'])
+    assert.equal(await shown(), 'today', 'the mouse events alone, auxclick after them not a second step')
+    await partial(['auxclick'])
+    assert.equal(await shown(), 'all', 'auxclick alone')
+    await partial(['pointerdown', 'pointerup'], 4)
+    assert.equal(await shown(), 'today', 'the forward button, as pointer events')
+
+    // Cmd+[ and Cmd+] (what Logi Options+ and other mouse software send on macOS), Cmd+Left.
+    await setShow('overdue')
+    await cmd('[', 'BracketLeft', 219)
+    assert.equal(await shown(), 'today', 'Cmd+[')
+    await cmd(']', 'BracketRight', 221)
+    assert.equal(await shown(), 'overdue', 'Cmd+]')
+    await cmd('ArrowLeft', 'ArrowLeft', 37)
+    assert.equal(await shown(), 'today', 'Cmd+Left')
+    await cmd('[', 'BracketLeft', 219)
+    assert.equal(await shown(), 'all')
 
     // The Browser Back key (some mice and keyboards send it) is the same back.
     await setShow('upcoming')
@@ -747,8 +790,9 @@ test('hover quick actions: an icon per status at the right edge, shown on hover 
     assert.equal(await shown('t-alice'), '1')
     assert.equal(await shown('t-memo'), '0', 'only the hovered row')
     assert.equal(await browser.eval<string>(title), before, 'laid over the row: nothing moves')
-    // To Do: every other status, in order, named as the person named them; then "…".
-    assert.deepEqual(await icons('t-alice'), [['in-progress', 'In Progress'], ['pending', 'Pending'], ['done', 'Done'], ['cancelled', 'Cancelled'], ['more', 'More']])
+    // To Do: every other status, in order, named as the person named them (▷ In Progress opens
+    // the send menu, tested below); then "…".
+    assert.deepEqual(await icons('t-alice'), [['in-progress', 'Send to a bot or a project…'], ['pending', 'Pending'], ['done', 'Done'], ['cancelled', 'Cancelled'], ['more', 'More']])
     await browser.shot('sidebar-quick')
 
     // ✓ Done: moved, not opened.
@@ -785,23 +829,138 @@ test('hover quick actions: an icon per status at the right edge, shown on hover 
     assert.deepEqual((await updates()).at(-1), { id: cursor, patch: { state: 'todo' } })
     assert.equal(await pane(), null)
 
-    // The board's cards: three icons (Done, Pending, Cancelled first); the rest under "…".
+    // The board's cards: three icons (Done, ▷ send, Pending first); the rest under "…".
     await browser.load(`${base}/board`, 1400, 800)
     await browser.eval(`[...document.querySelectorAll('button')].find((b) => b.textContent === 'Board').click()`)
     await sleep(100)
     await hover('t-plan')
     assert.equal(await shown('t-plan'), '1')
-    assert.deepEqual(await icons('t-plan'), [['pending', 'Pending'], ['done', 'Done'], ['cancelled', 'Cancelled'], ['more', 'More']])
+    assert.deepEqual(await icons('t-plan'), [['in-progress', 'Send to a bot or a project…'], ['pending', 'Pending'], ['done', 'Done'], ['more', 'More']])
     await browser.shot('board-quick')
     await button('t-plan', 'more')
-    assert.ok((await browser.eval<string[]>(`[...document.querySelectorAll('.menu .menu-item')].map((b) => b.textContent)`)).includes('Move to In Progress'))
-    await browser.eval(`[...document.querySelectorAll('.menu .menu-item')].find((b) => b.textContent === 'Move to In Progress').click()`)
+    assert.ok((await browser.eval<string[]>(`[...document.querySelectorAll('.menu .menu-item')].map((b) => b.textContent)`)).includes('Move to Cancelled'))
+    await browser.eval(`[...document.querySelectorAll('.menu .menu-item')].find((b) => b.textContent === 'Move to Cancelled').click()`)
     await sleep(150)
-    assert.deepEqual((await updates()).at(-1), { id: 't-plan', patch: { state: 'in-progress' } })
+    assert.deepEqual((await updates()).at(-1), { id: 't-plan', patch: { state: 'cancelled' } })
     await hover('t-alice')
     await button('t-alice', 'done')
     assert.deepEqual((await updates()).at(-1), { id: 't-alice', patch: { state: 'done' } })
     assert.equal(await pane(), null, 'not opened on the board either')
+  } finally {
+    await browser.close()
+    server.close()
+  }
+})
+
+test('the send menu (▷): bots and projects in one click, without opening the task; Esc, a click elsewhere, the keyboard; a task with a bot keeps the plain move', { skip: chromePath ? false : 'no Chrome found (set CHROME_BIN)' }, async () => {
+  const { server, port } = await serve()
+  const browser = await Browser.open()
+  const base = `http://127.0.0.1:${port}`
+  const hover = async (id: string) => {
+    const at = await browser.point(`[data-id="${id}"]`, '', true)
+    await browser.mouse('mouseMoved', at.x, at.y, 0)
+    await sleep(250)
+  }
+  const sendButton = async (id: string) => {
+    await hover(id)
+    const at = await browser.eval<{ x: number; y: number }>(`(() => { const r = document.querySelector('[data-id="${id}"] .quick [data-send]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } })()`)
+    await browser.click(at)
+    await sleep(150)
+  }
+  const choices = () => browser.eval<string[]>(`[...document.querySelectorAll('.send-menu [data-send-to]')].map((b) => b.dataset.sendTo)`)
+  const groups = () => browser.eval<string[]>(`[...document.querySelectorAll('.send-menu .menu-label')].map((x) => x.textContent)`)
+  const focused = () => browser.eval<string | null>(`document.activeElement?.dataset.sendTo ?? (document.activeElement?.dataset.id ? 'row:' + document.activeElement.dataset.id : document.activeElement?.className ?? null)`)
+  const open = () => browser.eval<boolean>(`!!document.querySelector('.send-menu')`)
+  const pane = () => browser.eval<string | null>(`document.querySelector('.details .pane-title')?.value ?? null`)
+  const notice = () => browser.eval<string>(`document.querySelector('.notice')?.textContent ?? ''`)
+  const task = (id: string) => browser.eval<{ state: string; handoffs: unknown[]; workspaces?: unknown[] }>(`window.__tasks.find((t) => t.id === '${id}')`)
+  const key = async (name: string, code = name) => {
+    // Enter as a keyboard types it (with its character), so a focused button is pressed.
+    await browser.send('Input.dispatchKeyEvent', { type: name === 'Enter' ? 'keyDown' : 'rawKeyDown', key: name, code, windowsVirtualKeyCode: { Escape: 27, Enter: 13, ArrowDown: 40, ArrowUp: 38 }[name] ?? 0, ...(name === 'Enter' ? { text: '\r' } : {}) })
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, windowsVirtualKeyCode: { Escape: 27, Enter: 13, ArrowDown: 40, ArrowUp: 38 }[name] ?? 0 })
+    await sleep(150)
+  }
+  try {
+    await browser.load(`${base}/sidebar`, 380, 1000)
+
+    // ▷ opens the menu by the button; the task stays closed. Bots, then the projects: the task's
+    // own first (planning), then the other Git projects (not the folder one); then the plain move.
+    await sendButton('t-plan')
+    assert.equal(await open(), true)
+    assert.equal(await pane(), null, 'the task is not opened')
+    assert.deepEqual(await groups(), ['Bots', 'Projects'])
+    assert.deepEqual(await choices(), ['bot:Orca', 'project:planning', 'project:website', 'none'])
+    assert.match(await browser.eval<string>(`document.querySelector('[data-send-to="project:planning"]').textContent`), /planningthis project/)
+    assert.equal(await focused(), 'bot:Orca', 'the keyboard starts on the first bot')
+
+    // Arrows move, Esc closes and gives the keyboard back to the row; nothing was sent.
+    await key('ArrowDown')
+    assert.equal(await focused(), 'project:planning')
+    await key('ArrowUp')
+    assert.equal(await focused(), 'bot:Orca')
+    await key('Escape')
+    assert.deepEqual([await open(), await focused(), await pane()], [false, 'row:t-plan', null])
+
+    // A click elsewhere closes it too.
+    await sendButton('t-plan')
+    await browser.click({ x: 190, y: 980 })
+    assert.equal(await open(), false)
+
+    // Enter picks: a project. The worker is asked for that project's last choices, then starts a
+    // workspace there with them (Claude Code at first) and moves the task to In Progress.
+    await sendButton('t-plan')
+    await key('ArrowDown')
+    await key('ArrowDown')
+    assert.equal(await focused(), 'project:website')
+    await key('Enter')
+    await sleep(300)
+    assert.equal(await open(), false)
+    assert.deepEqual((await browser.eval<unknown[]>(CALLS('tasks.projectOffer'))).at(-1), { id: 't-plan', project: 'website' })
+    assert.deepEqual((await browser.eval<unknown[]>(CALLS('tasks.sendToProject'))).at(-1), { id: 't-plan', agent: 'claude', notes: true, state: 'in-progress', open: false, by: 'panel', project: 'website' })
+    assert.match(await notice(), /Started claude in a new workspace of website, t-plan-ws\. The task is In Progress\./)
+    assert.equal((await task('t-plan')).state, 'in-progress')
+    assert.equal(await pane(), null, 'still not opened')
+    assert.equal(await focused(), 'row:t-plan', 'the keyboard is back on the row')
+
+    // A click picks: a bot, to its Home Chat as a handoff, then In Progress.
+    await sendButton('t-alice')
+    await sleep(100)
+    await browser.click(await browser.point('.send-menu [data-send-to="bot:Orca"]', '', true))
+    await sleep(300)
+    assert.deepEqual((await browser.eval<unknown[]>(CALLS('tasks.send'))).at(-1), { id: 't-alice', bot: 'Orca', type: 'handoff', chat: 'home', notes: true, state: 'in-progress', by: 'panel' })
+    assert.match(await notice(), /Sent to Orca in its Home Chat\. The task is In Progress\./)
+    assert.equal((await task('t-alice')).handoffs.length, 1)
+
+    // "Only move to In Progress": no send.
+    const sends = (await browser.eval<unknown[]>(CALLS('tasks.send'))).length
+    await sendButton('t-memo')
+    await browser.click(await browser.point('.send-menu [data-send-to="none"]', '', true))
+    await sleep(200)
+    assert.equal((await task('t-memo')).state, 'in-progress')
+    assert.equal((await browser.eval<unknown[]>(CALLS('tasks.send'))).length, sends)
+
+    // A task a bot has keeps the plain ▷: it moves the task, no menu. (t-alice, taken back to To Do.)
+    await browser.eval(`window.orca.plugin.request('tasks.update', { id: 't-alice', patch: { state: 'todo' } })`)
+    await sleep(300)
+    await hover('t-alice')
+    assert.equal(await browser.eval(`!!document.querySelector('[data-id="t-alice"] .quick [data-send]')`), false)
+    await browser.eval(`document.querySelector('[data-id="t-alice"] .quick [data-status="in-progress"]').click()`)
+    await sleep(200)
+    assert.equal(await open(), false)
+    assert.equal((await task('t-alice')).state, 'in-progress')
+
+    // The board's cards, from demo data: the project's bot first, then Orca; the task's project
+    // first. Dark too.
+    await browser.load(`${base}/board?demo&theme=dark`, 1280, 800)
+    await browser.eval(`[...document.querySelectorAll('button')].find((b) => b.textContent === 'Board').click()`)
+    await sleep(200)
+    await sendButton('t-round01')
+    await sleep(100)
+    assert.deepEqual(await choices(), ['bot:online-store', 'bot:Orca', 'bot:docs-site', 'project:online-store', 'project:docs-site', 'project:mobile-app', 'none'])
+    assert.equal(await pane(), null)
+    await browser.shot('board-send-menu')
+    await key('Escape')
+    assert.deepEqual([await open(), await focused()], [false, 'row:t-round01'])
   } finally {
     await browser.close()
     server.close()
@@ -844,6 +1003,15 @@ test('README screenshots, from demo data', { skip: !chromePath ? 'no Chrome foun
       await browser.load(`${base}/sidebar?demo&theme=${theme}`, 380, 800)
       await sleep(300)
       await save(`sidebar-${theme}`)
+      // ▷ on a row: the send menu.
+      const row = await browser.point('.row', 'Fix the rounding in the checkout total', true)
+      await browser.mouse('mouseMoved', row.x, row.y, 0)
+      await sleep(250)
+      await browser.click(
+        await browser.eval<{ x: number; y: number }>(`(() => { const r = document.querySelector('[data-id="t-round01"] .quick [data-send]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } })()`)
+      )
+      await sleep(300)
+      await save(`send-menu-${theme}`)
     }
     // The plugin page's cover: the board, 16:10 at 1600×1000.
     await browser.load(`${base}/board?demo&theme=light`, 1600, 1000)

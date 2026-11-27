@@ -33,7 +33,7 @@ streams its logs and reloads until Ctrl-C.
 ## Tests
 
 ```sh
-npm test                    # store, CLI, merge, project send, send form and drag helper tests,
+npm test                    # store, CLI, merge, project send, send form, send menu and drag helper tests,
                             # plain Node (CI runs it)
 npm run test:browser        # the sidebar and the board in headless Chrome, dragged with real
                             # mouse input over the DevTools protocol (CI runs it; skipped without

@@ -112,6 +112,15 @@ test('every project form: plain JSON and accepted by the worker as sent', () => 
   assert.equal(count, 2 * 4 * 4 * 2 * 2 * 2)
 })
 
+test('a project form for another project than the task\'s own (the send menu): the project goes with it', () => {
+  const form: ProjectForm = { agent: 'claude', note: '', notes: true, state: 'in-progress', open: false, project: ' docs-site ' }
+  const input = projectSendInput('t-1', form, 'panel')
+  assert.deepEqual(input, { id: 't-1', agent: 'claude', notes: true, state: 'in-progress', open: false, by: 'panel', project: 'docs-site' })
+  assert.deepEqual(checkProjectSend(input), input)
+  assert.equal('project' in projectSendInput('t-1', { ...form, project: '' }, 'panel'), false, 'none chosen: the task\'s own')
+  assert.throws(() => checkProjectSend({ id: 't-1', project: 7 }), /^Error: Project: must be text/)
+})
+
 test('the worker names the field it refuses, and takes what 0.4.x panels sent', () => {
   const refuse = (input: unknown, field: string, why: RegExp) => {
     assert.throws(() => checkBotSend(input), (error: unknown) => error instanceof SendFieldError && error.field === field && why.test(error.message))

@@ -27,6 +27,8 @@ export type FieldPlace =
 
 export interface KeyPress {
   key: string
+  /** The physical key (`BracketLeft`), when known: Cmd+[ on a layout whose [ is elsewhere. */
+  code?: string
   meta: boolean
   ctrl: boolean
   alt: boolean
@@ -122,6 +124,14 @@ export function keyAction(press: KeyPress, screen: KeyScreen): KeyResult {
   // Browser Back / Forward (a mouse's thumb buttons on some setups, media keyboards): a step back
   // or forward in the page, also from a field (a details field saves as it is left).
   if (key === 'BrowserBack' || key === 'BrowserForward') return { leave: press.target === 'field', action: key === 'BrowserBack' ? 'back' : 'forward' }
+  // Cmd+[ and Cmd+] (what mouse software on macOS, such as Logi Options+, sends for a mouse's back
+  // and forward buttons), also from a field; Cmd+Left and Cmd+Right too, except in a field, where
+  // they move the caret.
+  const cmdOnly = press.meta && !press.ctrl && !press.alt
+  if (cmdOnly && !press.shift && (key === '[' || key === ']' || press.code === 'BracketLeft' || press.code === 'BracketRight')) {
+    return { leave: press.target === 'field', action: key === '[' || press.code === 'BracketLeft' ? 'back' : 'forward' }
+  }
+  if (cmdOnly && !press.shift && press.target !== 'field' && (key === 'ArrowLeft' || key === 'ArrowRight')) return { leave: false, action: key === 'ArrowLeft' ? 'back' : 'forward' }
   if (press.target === 'field') {
     if (key === 'Escape') {
       // Quick add, search, Statuses: leave the box; what was typed stays. A send form's
@@ -194,8 +204,8 @@ export function shortcutList(sidebar: boolean): [string, string][] {
     ...(sidebar ? [] : ([['/', 'Search'], ['V', 'List or board']] as [string, string][])),
     ['Cmd/Ctrl+Enter', 'Save the field (notes, title); in a send form, send'],
     ['Esc', 'Close the menu, the form, the merge suggestions, the details, Statuses; clear the picked tasks. In a field: leave it (details fields save)'],
-    ['Mouse back button', 'Back: close the menu, the form, the details, Statuses, as Esc does; then the view before (Show, project' + (sidebar ? '' : ', list or board') + ')'],
-    ['Mouse forward button', 'Forward again: the view, or the task Back closed'],
+    ['Mouse back button, Cmd+[', 'Back: close the menu, the form, the details, Statuses, as Esc does; then the view before (Show, project' + (sidebar ? '' : ', list or board') + ')'],
+    ['Mouse forward button, Cmd+]', 'Forward again: the view, or the task Back closed'],
     ['?', 'Show or hide these shortcuts']
   ]
 }

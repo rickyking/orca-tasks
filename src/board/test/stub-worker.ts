@@ -48,6 +48,12 @@ const tasks: Task[] = demo ? demo.tasks : [
   make('t-pack', 'Finalize the release notes', {}, { waiting_on: 'Bob' }),
   make('t-notes', 'Standup notes', {}, { done_at: now.toISOString() })
 ]
+/** The Orca projects outside the demo: two Git projects and a folder one (no workspaces there). */
+const PROJECTS = [
+  { name: 'planning', id: 'p-planning', kind: 'git', path: '/h/planning', hostId: 'local', hidden: false },
+  { name: 'website', id: 'p-website', kind: 'git', path: '/h/website', hostId: 'local', hidden: false },
+  { name: 'notes', id: 'p-notes', kind: 'folder', path: '/h/notes', hostId: 'local', hidden: false }
+]
 const calls: { name: string; input: unknown }[] = []
 const listeners = new Map<string, ((payload: unknown) => void)[]>()
 const uiState: Record<string, Record<string, unknown>> = {}
@@ -64,7 +70,7 @@ function changed(): void {
 
 const handlers: Record<string, (input: never) => unknown> = {
   'tasks.list': () => ({ tasks: tasks.map((t) => ({ ...t })), revision: 1, today: DEMO ? DEMO_TODAY : '2026-11-24', bots: demo?.bots ?? {}, workspaces: demo?.workspaces ?? {}, statuses }),
-  'tasks.projects': () => ({ orca: DEMO ? DEMO_PROJECTS : [], summary: [] }),
+  'tasks.projects': () => ({ orca: DEMO ? DEMO_PROJECTS : PROJECTS, summary: [] }),
   'tasks.paths': () => ({ home: '/h', data: '/h/tasks.json', inbox: '/h/inbox.md', cli: '/h/bin/orca-tasks' }),
   'tasks.uiState': (input: { surface: string; set?: Record<string, unknown> }) => {
     if (input.set) uiState[input.surface] = input.set
@@ -121,7 +127,17 @@ const handlers: Record<string, (input: never) => unknown> = {
     changed()
     return { task: tasks[at], handoff }
   },
-  'tasks.projectOffer': () => ({ project: 'planning', error: null, access: null, agents: ['claude', 'codex'], last: null }),
+  'tasks.projectOffer': (input: { id: string; project?: string }) => ({ project: input.project ?? 'planning', error: null, access: null, agents: ['claude', 'codex'], last: null }),
+  // Records the workspace on the task, as the worker does once Orca has started it.
+  'tasks.sendToProject': (input: { id: string; agent: 'claude' | 'codex'; state: string | null; project?: string }) => {
+    const at = find(input.id)
+    const project = input.project ?? tasks[at].project ?? 'planning'
+    const workspace = { project, project_id: `p-${project}`, workspace_id: `w-${input.id}`, workspace_name: `${input.id}-ws`, terminal_id: null, agent: input.agent, sent_at: now.toISOString(), by: 'board' as const }
+    tasks[at] = { ...tasks[at], workspaces: [...(tasks[at].workspaces ?? []), workspace] }
+    if (input.state) tasks[at] = patchTask(tasks[at], { state: input.state }, now, [], statuses)
+    changed()
+    return { task: tasks[at], workspace }
+  },
   'tasks.merge': (input: { keep: string; ids: string[]; priority?: string }) => {
     const plan = mergeTasks(tasks[find(input.keep)], input.ids.map((id) => tasks[find(id)]), { priority: input.priority as never }, now, statuses)
     for (const t of [plan.keeper, ...plan.merged]) tasks[find(t.id)] = t

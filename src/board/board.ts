@@ -24,14 +24,15 @@ import { groupByProject } from '../core/projects.ts'
 import { botReplied, bySection as groupByStatus, dropOrder, DUE_FILTERS, dayLabel, dueLabel, matchesDue, orderSection, visibleStatuses, type DueFilter } from '../core/sections.ts'
 import { DEFAULT_STATUSES, defaultSendStatus, firstOfKind, KIND_LABELS, type StatusOp } from '../core/statuses.ts'
 import { activeHandoff, compareTasks, currentStatus, doneDay, isClosed, isOverdue, lastChat, lastWorkspace, viewCounts } from '../core/tasks.ts'
-import { PRIORITIES, STATUS_COLORS, STATUS_KINDS, type Priority, type ProjectAgent, type SendType, type StatusColor, type StatusDef, type StatusKind, type Task, type TaskPatch } from '../core/types.ts'
+import { PRIORITIES, STATUS_COLORS, STATUS_KINDS, type Handoff, type Priority, type ProjectAgent, type ProjectSend, type SendType, type StatusColor, type StatusDef, type StatusKind, type Task, type TaskPatch } from '../core/types.ts'
 import type { BotOffer, ProjectOffer, TaskPaths } from '../protocol.ts'
 import { cx, h, icon, mountInto } from './dom.ts'
 import { autoScroll, ghostOf, insertionIndex, moveIndex, pointerDrag } from './drag.ts'
 import type { MergeSuggestion, SuggestResult } from '../core/suggest.ts'
-import { backAction, forwardAction, mouseNav, ViewHistory, type View } from './history.ts'
+import { backAction, forwardAction, MOUSE_NAV_EVENTS, MouseNav, ViewHistory, type View } from './history.ts'
 import { keyTarget as statusKeyTarget, QUICK_ROOM, quickIcon, quickStatuses } from './quick.ts'
 import { keyAction, moveCursor, shortcutList, type FieldPlace, type KeyAction, type KeyScreen, type KeyTarget } from './keys.ts'
+import { botChoices, opensSendMenu, projectChoices } from './send-menu.ts'
 
 /** The sidebar panel, or the board tab. */
 const SIDEBAR = document.documentElement.dataset.mode === 'sidebar'
@@ -345,13 +346,64 @@ async function send(): Promise<void> {
     const { task, handoff } = await request('tasks.send', botSendInput(form.taskId, form, SIDEBAR ? 'panel' : 'board'))
     state.escArmed = false
     state.send = null
-    state.notice = { text: `Sent to ${handoff.bot}${handoff.chat === 'new' ? ' in a new chat' : handoff.chat === 'home' ? ' in its Home Chat' : ''}. The task is ${task.state_name}.`, error: false }
+    state.notice = { text: sentToBot(task, handoff), error: false }
   } catch (error) {
     form.busy = false
     form.error = message(error)
   }
   await load()
   render(true)
+}
+
+function sentToBot(task: Task, handoff: Handoff): string {
+  return `Sent to ${handoff.bot}${handoff.chat === 'new' ? ' in a new chat' : handoff.chat === 'home' ? ' in its Home Chat' : ''}. The task is ${task.state_name}.`
+}
+
+function sentToProject(task: Task, workspace: ProjectSend): string {
+  return `Started ${workspace.agent} in a new workspace of ${workspace.project}, ${workspace.workspace_name}. The task is ${task.state_name}.`
+}
+
+// ---- The send menu (▷ on a row or a card) ----
+// One click sends the task with the send forms' usual choices: to a bot's Home Chat as a handoff,
+// or to a project as a workspace with the coding agent chosen there last (Claude Code at first);
+// the task moves to In Progress. The forms in the details stay for anything else.
+
+/** Sends without opening the task: says so in the notice bar, then what came of it. */
+async function sendFromMenu(task: Task, to: string, work: () => Promise<string>): Promise<void> {
+  state.notice = { text: `Sending "${task.title}" to ${to}…`, error: false }
+  render()
+  try {
+    state.notice = { text: await work(), error: false }
+  } catch (error) {
+    state.notice = { text: message(error), error: true }
+  }
+  await load()
+  render(true)
+  if (document.activeElement === document.body) focusTask(task.id)
+}
+
+function menuSendToBot(task: Task, offer: BotOffer, bot: string): Promise<void> {
+  return sendFromMenu(task, bot, async () => {
+    const form = { bot, type: 'handoff' as const, chat: 'home' as const, note: '', notes: offer.last?.notes ?? true, state: defaultSendStatus(state.statuses)?.id ?? '' }
+    const { task: sent, handoff } = await request('tasks.send', botSendInput(task.id, form, SIDEBAR ? 'panel' : 'board'))
+    return sentToBot(sent, handoff)
+  })
+}
+
+function menuSendToProject(task: Task, project: string): Promise<void> {
+  return sendFromMenu(task, project, async () => {
+    const offer = await request('tasks.projectOffer', { id: task.id, project })
+    if (offer.error || offer.access) throw new Error(offer.error ?? offer.access ?? '')
+    const last = offer.last
+    const form = { agent: last?.agent ?? 'claude', note: '', notes: last?.notes ?? true, state: defaultSendStatus(state.statuses)?.id ?? '', open: last?.open ?? false, project }
+    const { task: sent, workspace } = await request('tasks.sendToProject', projectSendInput(task.id, form, SIDEBAR ? 'panel' : 'board'))
+    return sentToProject(sent, workspace)
+  })
+}
+
+/** Puts the keyboard back on a task's row or card (as drawn after the last render). */
+function focusTask(id: string): void {
+  ;(Array.from(els.main.querySelectorAll<HTMLElement>('[data-id]')).find((el) => el.dataset.id === id) ?? null)?.focus({ preventScroll: true })
 }
 
 async function openToProject(task: Task): Promise<void> {
@@ -379,7 +431,7 @@ async function sendToProject(): Promise<void> {
     const { task, workspace } = await request('tasks.sendToProject', projectSendInput(form.taskId, form, SIDEBAR ? 'panel' : 'board'))
     state.escArmed = false
     state.toProject = null
-    state.notice = { text: `Started ${workspace.agent} in a new workspace of ${workspace.project}, ${workspace.workspace_name}. The task is ${task.state_name}.`, error: false }
+    state.notice = { text: sentToProject(task, workspace), error: false }
   } catch (error) {
     form.busy = false
     form.error = message(error)
@@ -708,6 +760,9 @@ function render(forceDetails = false): void {
     state.help ? shortcutsBox() : null,
     state.suggest ? suggestionsBox(state.suggest) : null
   )
+  // The row or card that has the keyboard (or a button on it) gets it back once redrawn.
+  const active = document.activeElement as HTMLElement | null
+  const focusedTask = active && els.main.contains(active) ? (active.closest<HTMLElement>('[data-id]')?.dataset.id ?? null) : null
   if (state.settings) {
     // Leave the settings alone while the person types a name there.
     const typing = els.main.contains(document.activeElement) && (document.activeElement as HTMLElement).tagName === 'INPUT'
@@ -720,6 +775,7 @@ function render(forceDetails = false): void {
     mountInto(els.main, state.view === 'list' || SIDEBAR ? renderList() : renderBoard())
   }
   if (SIDEBAR && !state.settings) els.main.appendChild(forAgents())
+  if (focusedTask && (!document.activeElement || document.activeElement === document.body)) focusTask(focusedTask)
   renderDetails(forceDetails)
   viewHistory.note(shownView())
 }
@@ -934,31 +990,59 @@ function openStatusMenu(task: Task, anchor: HTMLElement): void {
   openMenu(anchor, `Move ${task.title} to`, items)
 }
 
-/** A menu under (or above) `anchor`: arrows move, Esc or a click elsewhere closes it. */
-function openMenu(anchor: HTMLElement, label: string, items: HTMLElement[]): void {
+interface MenuOptions {
+  /** A class beside `menu`, for a menu laid out differently. */
+  className?: string
+  /** Where the keyboard goes when Esc closes the menu (default: back to `anchor`). */
+  back?: () => void
+  /** Focus the menu itself at first, not its first item (its items are still coming). */
+  focusMenu?: boolean
+}
+
+/** The items the arrows move between: the menu's buttons that can be pressed. */
+function menuItems(menu: HTMLElement): HTMLElement[] {
+  return Array.from(menu.querySelectorAll<HTMLElement>('.menu-item:not(:disabled)'))
+}
+
+/** A menu under (or above) `anchor`: arrows move, Enter picks, Esc or a click elsewhere closes it.
+ *  `place` lays it out again when its items change. */
+function openMenu(anchor: HTMLElement, label: string, items: HTMLElement[], options: MenuOptions = {}): { menu: HTMLElement; place: () => void } {
   closeMenu?.()
-  const menu = h('div', { class: 'menu', role: 'menu', 'aria-label': label }, items)
+  const menu = h('div', { class: cx('menu', options.className), role: 'menu', 'aria-label': label, tabindex: '-1' }, items)
   document.body.appendChild(menu)
   const r = anchor.getBoundingClientRect()
-  const m = menu.getBoundingClientRect()
-  const left = Math.max(4, Math.min(r.left, window.innerWidth - m.width - 4))
-  const top = r.bottom + m.height + 4 > window.innerHeight ? Math.max(4, r.top - m.height - 4) : r.bottom + 4
-  Object.assign(menu.style, { left: `${left}px`, top: `${top}px` })
-  ;((menu.querySelector('.menu-item.current') ?? menu.querySelector('.menu-item')) as HTMLElement | null)?.focus()
+  const place = () => {
+    // Measured at the left edge first, so the room left of the anchor does not narrow it.
+    Object.assign(menu.style, { left: '0px', top: '0px', width: '' })
+    const m = menu.getBoundingClientRect()
+    menu.style.width = `${Math.ceil(m.width)}px`
+    const left = Math.max(4, Math.min(r.left, window.innerWidth - m.width - 4))
+    const top = r.bottom + m.height + 4 > window.innerHeight ? Math.max(4, r.top - m.height - 4) : r.bottom + 4
+    Object.assign(menu.style, { left: `${left}px`, top: `${top}px` })
+  }
+  place()
+  ;((options.focusMenu ? menu : (menu.querySelector('.menu-item.current') ?? menuItems(menu)[0] ?? menu)) as HTMLElement).focus()
   const away = (e: Event) => {
+    // The thumb buttons are Back and Forward: Back closes the menu as one step of its own.
+    if ((e as PointerEvent).button > 2) return
     if (!menu.contains(e.target as Node)) closeMenu?.()
   }
   const key = (e: KeyboardEvent) => {
-    const list = Array.from(menu.querySelectorAll<HTMLElement>('.menu-item'))
+    const list = menuItems(menu)
     const at = list.indexOf(document.activeElement as HTMLElement)
     if (e.key === 'Escape') {
       e.stopPropagation()
       closeMenu?.()
-      anchor.focus()
+      ;(options.back ?? (() => anchor.focus()))()
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       e.stopPropagation()
-      list[(at + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length]?.focus()
+      const from = at === -1 && e.key === 'ArrowUp' ? 0 : at
+      list[(from + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length]?.focus()
+    } else if (e.key === 'Home' || e.key === 'End') {
+      e.preventDefault()
+      e.stopPropagation()
+      ;(e.key === 'Home' ? list[0] : list.at(-1))?.focus()
     }
   }
   setTimeout(() => window.addEventListener('pointerdown', away, true), 0)
@@ -971,6 +1055,7 @@ function openMenu(anchor: HTMLElement, label: string, items: HTMLElement[]): voi
     window.removeEventListener('keydown', key, true)
     closeMenu = null
   }
+  return { menu, place }
 }
 
 /**
@@ -981,27 +1066,47 @@ function openMenu(anchor: HTMLElement, label: string, items: HTMLElement[]): voi
  */
 function quickActions(task: Task, room: number): HTMLElement {
   const current = currentStatus(task, state.statuses).id
-  const { shown, more } = quickStatuses(state.statuses, current, room)
   const inProgress = defaultSendStatus(state.statuses)?.id ?? null
+  // ▷ (In Progress) opens the send menu for a task that can be sent; for a closed task or one a
+  // bot has, it moves the task there as it always did.
+  const send = inProgress !== null && opensSendMenu(task) ? inProgress : null
+  const { shown, more } = quickStatuses(state.statuses, current, room, send)
   const stop = (e: Event) => e.stopPropagation()
   return h(
     'div',
     { class: 'quick', onclick: stop, ondblclick: stop },
     shown.map((def) =>
-      h(
-        'button',
-        {
-          class: cx('quick-button', `c-${def.color}`),
-          title: def.name,
-          'aria-label': `Move ${task.title} to ${def.name}`,
-          'data-status': def.id,
-          onclick: (e: Event) => {
-            e.stopPropagation()
-            void moveTo(task, def.id)
-          }
-        },
-        icon(quickIcon(def, inProgress), 14)
-      )
+      def.id === send
+        ? h(
+            'button',
+            {
+              class: cx('quick-button send', `c-${def.color}`),
+              title: 'Send to a bot or a project…',
+              'aria-label': `Send ${task.title} to a bot or a project`,
+              'aria-haspopup': 'menu',
+              'data-status': def.id,
+              'data-send': '',
+              onclick: (e: Event) => {
+                e.stopPropagation()
+                openSendMenu(task, e.currentTarget as HTMLElement)
+              }
+            },
+            icon('play', 14)
+          )
+        : h(
+            'button',
+            {
+              class: cx('quick-button', `c-${def.color}`),
+              title: def.name,
+              'aria-label': `Move ${task.title} to ${def.name}`,
+              'data-status': def.id,
+              onclick: (e: Event) => {
+                e.stopPropagation()
+                void moveTo(task, def.id)
+              }
+            },
+            icon(quickIcon(def, inProgress), 14)
+          )
     ),
     h(
       'button',
@@ -1057,6 +1162,84 @@ function openMoreMenu(task: Task, anchor: HTMLElement, more: readonly StatusDef[
     item(state.picked.includes(task.id) ? 'Unpick' : 'Pick for a merge', () => togglePick(task))
   ].filter((x): x is HTMLButtonElement => x !== null)
   openMenu(anchor, `More for ${task.title}`, items)
+}
+
+/** ▷ on a row or a card: the bots (the one Send would pick first, then the others) and the
+ *  projects (the task's own first, then the others); one click sends. The bots come from Orca a
+ *  moment after the menu opens. */
+function openSendMenu(task: Task, anchor: HTMLElement): void {
+  const then = defaultSendStatus(state.statuses)
+  const label = (text: string) => h('div', { class: 'menu-label', 'aria-hidden': 'true' }, text)
+  const hint = (text: string) => h('div', { class: 'menu-hint' }, text)
+  const choice = (lead: 'bot' | 'branch', name: string, note: string, title: string, action: () => void, disabled = false) =>
+    h(
+      'button',
+      {
+        class: 'menu-item',
+        role: 'menuitem',
+        title,
+        disabled,
+        'data-send-to': `${lead === 'bot' ? 'bot' : 'project'}:${name}`,
+        onclick: (e: Event) => {
+          e.stopPropagation()
+          closeMenu?.()
+          focusTask(task.id)
+          action()
+        }
+      },
+      icon(lead, 14),
+      h('span', { class: 'menu-name' }, name),
+      note ? h('span', { class: 'menu-note' }, note) : null
+    )
+  const bots = h('div', { class: 'menu-group', role: 'group', 'aria-label': 'Bots' }, label('Bots'), hint('Asking Orca for its bots…'))
+  const projects = projectChoices(state.orca, task.project)
+  const projectGroup = h(
+    'div',
+    { class: 'menu-group', role: 'group', 'aria-label': 'Projects' },
+    label('Projects'),
+    projects.length > 0
+      ? projects.map((p) =>
+          choice('branch', p.name, p.own ? 'this project' : '', `Start a workspace in ${p.name} with a coding agent working on this task`, () => void menuSendToProject(task, p.name))
+        )
+      : hint('No Git projects in Orca to start a workspace in.')
+  )
+  const footer = then
+    ? [
+        h('div', { class: 'menu-sep', role: 'separator' }),
+        h(
+          'button',
+          {
+            class: 'menu-item',
+            role: 'menuitem',
+            'data-send-to': 'none',
+            onclick: (e: Event) => {
+              e.stopPropagation()
+              closeMenu?.()
+              focusTask(task.id)
+              void moveTo(task, then.id)
+            }
+          },
+          h('span', { class: cx('dot', `c-${then.color}`) }),
+          h('span', { class: 'menu-name' }, `Only move to ${then.name}`)
+        )
+      ]
+    : []
+  const { menu, place } = openMenu(anchor, `Send ${task.title} to`, [bots, projectGroup, ...footer], { className: 'send-menu', back: () => focusTask(task.id), focusMenu: true })
+  const fill = (...items: HTMLElement[]) => {
+    if (!menu.isConnected) return
+    bots.replaceChildren(label('Bots'), ...items)
+    place()
+    if (document.activeElement === menu) menuItems(menu)[0]?.focus()
+  }
+  request('tasks.bots', { id: task.id }).then(
+    (offer) => {
+      const list = botChoices(offer)
+      if (offer.error) fill(hint(offer.error))
+      else if (list.length === 0) fill(hint('No bots on this computer. Make one in Orca first.'))
+      else fill(...list.map((b) => choice('bot', b.name, b.note, b.paused ? `${b.name} is paused` : `Hand the task to ${b.name} in its Home Chat`, () => void menuSendToBot(task, offer, b.name), b.paused)))
+    },
+    (error: unknown) => fill(hint(message(error)))
+  )
 }
 
 /** Lets a row or a card be dragged to a status (a list group or a board column) and to a place in
@@ -2271,14 +2454,19 @@ function run(action: KeyAction): void {
   }
 }
 
-// The mouse's back and forward buttons (button 3 and 4: an MX Master's thumb buttons). Every event
-// of those buttons is stopped, so the browser never takes them as "go back" in this frame (or in
-// Orca's window); the step is taken when the button is released.
-for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) {
+// The mouse's back and forward buttons (button 3 and 4: an MX Master's thumb buttons), on the
+// window, before anything else sees them. A press can come as pointer events, mouse events or
+// auxclick, and a frame does not always get all of them (MouseNav takes one step per press from
+// whichever arrive). Every event of those buttons is stopped, so the browser never takes them as
+// "go back" in this frame (or in Orca's window). The list, the board, the details and the sidebar
+// are all this one page, so these listeners cover every view.
+const mouseNavigation = new MouseNav()
+for (const type of MOUSE_NAV_EVENTS) {
   window.addEventListener(
     type,
     (e: MouseEvent) => {
-      const { prevent, step } = mouseNav(type, e.button)
+      const { prevent, step } = mouseNavigation.event(type, e.button, e.timeStamp)
+      debugNav(e, step ?? (prevent ? 'stopped' : null))
       if (!prevent) return
       e.preventDefault()
       e.stopPropagation()
@@ -2293,6 +2481,50 @@ for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) {
   )
 }
 
+// What a mouse really sends, for when its back button does nothing: the console gets a line
+// ("agent-tasks nav") for every event of buttons 3 and up and every key taken as Back or Forward;
+// with `agentTasksDebugNav(true)` in the frame's console (or `?debug-nav` in its address), for
+// every mouse button and every key with Cmd, Ctrl or Alt too.
+let navDebug = new URLSearchParams(location.search).has('debug-nav')
+try {
+  navDebug ||= localStorage.getItem('agent-tasks-debug-nav') === '1'
+} catch {
+  // No storage: the toggle lasts until the page reloads.
+}
+;(globalThis as unknown as { agentTasksDebugNav: (on?: boolean) => boolean }).agentTasksDebugNav = (on = true) => {
+  navDebug = on
+  try {
+    if (on) localStorage.setItem('agent-tasks-debug-nav', '1')
+    else localStorage.removeItem('agent-tasks-debug-nav')
+  } catch {
+    // No storage.
+  }
+  return navDebug
+}
+
+function debugNav(e: MouseEvent | KeyboardEvent, taken: string | null): void {
+  const mouse = e instanceof MouseEvent
+  if (!navDebug && !taken && !(mouse && e.button >= 3)) return
+  console.debug('agent-tasks nav', {
+    type: e.type,
+    ...(mouse ? { button: e.button, buttons: e.buttons, pointerType: (e as PointerEvent).pointerType ?? null } : { key: e.key, code: e.code }),
+    meta: e.metaKey,
+    ctrl: e.ctrlKey,
+    alt: e.altKey,
+    shift: e.shiftKey,
+    target: (e.target as HTMLElement | null)?.tagName ?? null,
+    taken
+  })
+}
+
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (navDebug && (e.metaKey || e.ctrlKey || e.altKey || e.key.startsWith('Browser'))) debugNav(e, null)
+  },
+  true
+)
+
 document.addEventListener('keydown', (e) => {
   if (e.isComposing) return
   const el = document.activeElement as HTMLElement | null
@@ -2305,9 +2537,10 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key !== 'Escape') state.escArmed = false
   const { leave, action } = keyAction(
-    { key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, target, field: target === 'field' && el ? fieldPlace(el) : undefined },
+    { key: e.key, code: e.code, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, target, field: target === 'field' && el ? fieldPlace(el) : undefined },
     keyScreen()
   )
+  if (action === 'back' || action === 'forward') debugNav(e, action)
   if (!leave && action === 'none') return
   e.preventDefault()
   // Leaving a details field saves it (its blur handler), before anything closes.

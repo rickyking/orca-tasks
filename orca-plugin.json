@@ -3,7 +3,7 @@
   "manifestVersion": 2,
   "id": "agent-tasks",
   "name": "Agent Tasks",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Scheduled bots collect tasks from your other apps into one board in Orca. From it, hand any task to a bot or start it in its project with a coding agent.",
   "license": "MIT",
   "author": {

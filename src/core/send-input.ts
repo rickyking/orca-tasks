@@ -34,6 +34,8 @@ export interface ProjectForm {
   state: string
   /** Show the new workspace in Orca's window once it exists. */
   open: boolean
+  /** Another of the person's Orca projects to start the workspace in; the task's own when left out. */
+  project?: string
 }
 
 /** What `tasks.send` takes. */
@@ -58,6 +60,8 @@ export interface ProjectSendInput {
   state: string | null
   open: boolean
   by: SendSurface | 'cli'
+  /** Present only when the workspace goes to another project than the task's own. */
+  project?: string
 }
 
 /** The form after a change, as the panel shows it: a status message cannot start a new chat (it
@@ -126,7 +130,8 @@ export function botSendInput(id: string, form: BotForm, by: SendSurface): BotSen
 /** The request for sending task `id` to its project with the form as it is. */
 export function projectSendInput(id: string, form: ProjectForm, by: SendSurface): ProjectSendInput {
   const note = form.note.trim()
-  return { id, agent: form.agent, ...(note ? { note } : {}), notes: form.notes, state: form.state || null, open: form.open, by }
+  const project = form.project?.trim()
+  return { id, agent: form.agent, ...(note ? { note } : {}), notes: form.notes, state: form.state || null, open: form.open, by, ...(project ? { project } : {}) }
 }
 
 /** The first thing in `value` that is not JSON as Orca's `z.json()` reads it (`input.note:
@@ -187,7 +192,8 @@ export const FIELD_LABELS: Record<string, string> = {
   state: 'Then',
   by: 'Sent from',
   agent: 'Agent',
-  open: 'Show it in Orca'
+  open: 'Show it in Orca',
+  project: 'Project'
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -252,7 +258,8 @@ export function checkProjectSend(input: unknown): ProjectSendInput {
   const agent = raw.agent ?? 'claude'
   if (!(PROJECT_AGENTS as readonly unknown[]).includes(agent)) throw new SendFieldError('Agent', `must be ${PROJECT_AGENTS.join(' or ')}, not ${JSON.stringify(raw.agent)}`)
   const n = note(raw)
-  return { id, agent: agent as ProjectAgent, ...(n ? { note: n } : {}), notes: flag(raw, 'notes', true), state: state(raw), open: flag(raw, 'open', false), by: by(raw) }
+  const project = text(raw, 'project', false)?.trim()
+  return { id, agent: agent as ProjectAgent, ...(n ? { note: n } : {}), notes: flag(raw, 'notes', true), state: state(raw), open: flag(raw, 'open', false), by: by(raw), ...(project ? { project } : {}) }
 }
 
 /**

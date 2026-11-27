@@ -42,6 +42,9 @@ within a couple of seconds, and when you tick one off the bot sees that too.
   the bot's state and latest reply.
 - **Send to the project.** Start an Orca workspace of its own in the task's Git project, with Claude
   Code or Codex. The task is the agent's first prompt.
+- **Send in one click.** ▷ on a task's row or card opens a menu of your bots and projects, without
+  opening the task: pick one and the task goes to that bot's Home Chat, or to a workspace in that
+  project, and moves to In Progress.
 - **Merge duplicates.** Pick tasks to fold into one. Notes, sources, tags and history come along,
   and the merge can be undone. **Suggest merges** asks Claude Code which open tasks look like
   duplicates, and nothing merges until you confirm.
@@ -49,6 +52,8 @@ within a couple of seconds, and when you tick one off the bot sees that too.
   with JSON output, stable ids and documented exit codes.
 
 ![Sending a task to the project's bot from its details](docs/screenshots/send-light.png)
+
+![The send menu of ▷ on a task: its project's bot, Orca and the other bots, then its project and the other projects](docs/screenshots/send-menu-light.png)
 
 Everything is described in detail in the [reference](docs/reference.md).
 

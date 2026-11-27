@@ -15,11 +15,18 @@ export const PROMPT_MAX = 4096
 /** The longest workspace name used (Orca takes 200; the branch takes it too). */
 const NAME_MAX = 48
 
-/** The Orca project a task can be sent to, or why it cannot. */
-export function projectTarget(task: Task, orca: readonly OrcaProject[], match: (name: string, orca: readonly OrcaProject[]) => OrcaProject | null): { project: OrcaProject } | { error: string } {
-  if (!task.project) return { error: 'This task has no project: set its Project to one of your Orca projects first.' }
-  const project = match(task.project, orca)
-  if (!project || !project.id) return { error: `${task.project} is not one of your Orca projects, so there is nowhere to start a workspace.` }
+/** The Orca project a task can be sent to, or why it cannot: its own project, or `chosen` (any
+ *  of the person's Orca projects, picked in the send menu) when given. */
+export function projectTarget(
+  task: Task,
+  orca: readonly OrcaProject[],
+  match: (name: string, orca: readonly OrcaProject[]) => OrcaProject | null,
+  chosen?: string
+): { project: OrcaProject } | { error: string } {
+  const name = chosen ?? task.project
+  if (!name) return { error: 'This task has no project: set its Project to one of your Orca projects first.' }
+  const project = match(name, orca)
+  if (!project || !project.id) return { error: `${name} is not one of your Orca projects, so there is nowhere to start a workspace.` }
   if (project.kind === 'folder') return { error: `${project.name} is a folder project; Orca starts new workspaces only in Git projects.` }
   return { project }
 }
@@ -45,13 +52,15 @@ export interface PromptOptions {
   notes?: boolean
   /** The CLI's path, so the agent can read the task again and tick it off. */
   cli?: string
+  /** The project the workspace is in, when it is not the task's own. */
+  project?: string
 }
 
 /** The agent's first prompt: what the person asks, the task (title, due, priority, tags, source,
  *  notes), and how to report back; cut to PROMPT_MAX, notes first. */
 export function projectPrompt(task: Task, options: PromptOptions = {}): string {
   const cli = options.cli ?? 'orca-tasks'
-  const head = [`Your owner sent you this task from Agent Tasks (their task list in Orca). Work on it in this workspace, a new branch of ${task.project ?? 'the project'}.`, '']
+  const head = [`Your owner sent you this task from Agent Tasks (their task list in Orca). Work on it in this workspace, a new branch of ${options.project ?? task.project ?? 'the project'}.`, '']
   if (options.note && options.note.trim() !== '') head.push(options.note.trim(), '')
   head.push(`Task: ${task.title}`)
   if (task.due) head.push(`Due: ${task.due}${task.due_time ? ` ${task.due_time}` : ''}`)

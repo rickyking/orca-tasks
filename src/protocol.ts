@@ -115,9 +115,10 @@ declare module 'orca' {
       input: Pick<BotSendInput, 'id' | 'bot'> & Partial<BotSendInput>
       output: { task: Task; handoff: Handoff }
     }
-    /** Whether the task can be sent to its project, and the choices made last time. */
-    'tasks.projectOffer': { input: { id: string }; output: ProjectOffer }
-    /** Sends the task to its project: a new Orca workspace (`workspace.create`) with `agent`, whose
+    /** Whether the task can be sent to its project (or to `project`, another of the person's Orca
+     *  projects), and the choices made last time for that project. */
+    'tasks.projectOffer': { input: { id: string; project?: string }; output: ProjectOffer }
+    /** Sends the task to its project (or to `project`, from the send menu): a new Orca workspace (`workspace.create`) with `agent`, whose
      *  first prompt is the task; records it on the task and moves it to `state` when given. Only
      *  ever called when the person presses Send to project. */
     'tasks.sendToProject': { input: Pick<ProjectSendInput, 'id'> & Partial<ProjectSendInput>; output: { task: Task; workspace: ProjectSend } }

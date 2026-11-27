@@ -498,6 +498,28 @@ test('send to the project: a new workspace with the agent and the task as its pr
   await t.stop()
 })
 
+test('send to another project (the send menu): the workspace starts there, the choices are kept for that project', async () => {
+  const orcaHost = projectHost()
+  const t = await start({ installCli: true, results: orcaHost.results })
+  const { task } = await t.worker.request('tasks.add', { text: 'Load the sample data @online-store' })
+  const { task: none } = await t.worker.request('tasks.add', { text: 'Write the import script' })
+
+  const offer = await t.worker.request('tasks.projectOffer', { id: none.id, project: 'data-pipeline' })
+  assert.deepEqual([offer.project, offer.error], ['data-pipeline', null], 'a task without a project can go to any Orca project')
+  assert.match((await t.worker.request('tasks.projectOffer', { id: task.id, project: 'gone' })).error ?? '', /^gone is not one of your Orca projects/)
+
+  const { task: sent, workspace } = await t.worker.request('tasks.sendToProject', { id: task.id, agent: 'claude', notes: true, state: 'in-progress', open: false, by: 'panel', project: 'data-pipeline' })
+  const [params] = orcaHost.created
+  assert.equal(params.projectId, 'p-df')
+  assert.match(String(params.prompt), /a new branch of data-pipeline\./)
+  assert.deepEqual([workspace.project, sent.project, sent.state], ['data-pipeline', 'online-store', 'in-progress'], 'the task keeps its own project')
+  assert.deepEqual((await t.worker.request('tasks.projectOffer', { id: none.id, project: 'data-pipeline' })).last?.agent, 'claude', 'kept for data-pipeline')
+  assert.equal((await t.worker.request('tasks.projectOffer', { id: task.id })).last, null, 'not for the task\'s own project')
+  await assert.rejects(t.worker.request('tasks.sendToProject', { id: task.id, project: 'gone' }), /^Error: Project: gone is not one of your Orca projects/)
+  assert.equal(orcaHost.created.length, 1)
+  await t.stop()
+})
+
 test('send to the project: without the new capabilities it says what to approve', async () => {
   const orcaHost = projectHost()
   const capabilities = ['settings:own', 'workspace:read', 'workspace:write', 'notifications:show', 'terminal:send', 'terminal:read']

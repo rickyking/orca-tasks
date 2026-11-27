@@ -32,7 +32,7 @@ import { fromHostApi, matchOrcaProject, summarizeProjects, type OrcaProject } fr
 import { writeProjectsCache } from './core/orca-projects.ts'
 import type { BotOffer, ProjectOffer, ProjectPrefs, SendPrefs, TaskPaths } from './protocol.ts'
 
-export const VERSION = '0.6.3'
+export const VERSION = '0.6.4'
 const TICK_MS = 2_000
 const STATUS_ITEM = 'today'
 const SIMPLE_TODO_SETTING = 'takeSimpleTodoInbox'
@@ -626,11 +626,14 @@ export function createWorker(options: WorkerOptions = {}) {
     // ---- Sending a task to its project ----
 
     /** Whether the task can be sent to its project, and what the form chose last time. */
-    orca.panels.handle('tasks.projectOffer', async ({ id }): Promise<ProjectOffer> => {
+    orca.panels.handle('tasks.projectOffer', async ({ id, project: chosen }): Promise<ProjectOffer> => {
       const task = await store.get(id)
       await refreshProjects(true).catch(() => undefined)
-      const target = projectTarget(task, orcaProjects, matchOrcaProject)
-      const remembered = (await readProjectPrefs(home))[prefsKey(task.project)] ?? null
+      const named = typeof chosen === 'string' && chosen.trim() !== '' ? chosen.trim() : undefined
+      const target = projectTarget(task, orcaProjects, matchOrcaProject, named)
+      // The choices are kept per project the workspace goes to.
+      const key = named ? ('project' in target ? target.project.name : named) : task.project
+      const remembered = (await readProjectPrefs(home))[prefsKey(key)] ?? null
       const statuses = await store.statuses()
       const last = remembered ? { ...remembered, state: remembered.state && statuses.some((s) => s.id === remembered.state) ? remembered.state : null } : null
       const access = hasProjectAccess()
@@ -655,11 +658,11 @@ export function createWorker(options: WorkerOptions = {}) {
     }
 
     orca.panels.handle('tasks.sendToProject', async (raw) => {
-      const { id, agent, note, notes, state, open, by } = checkProjectSend(raw)
+      const { id, agent, note, notes, state, open, by, project: chosen } = checkProjectSend(raw)
       const task = await store.get(id)
       if (isClosed(task)) throw invalid(`Task: ${task.title} is closed; reopen it before sending it to its project.`)
       await refreshProjects(true).catch(() => undefined)
-      const target = projectTarget(task, orcaProjects, matchOrcaProject)
+      const target = projectTarget(task, orcaProjects, matchOrcaProject, chosen)
       if ('error' in target) throw invalid(`Project: ${target.error}`)
       const statuses = await store.statuses()
       const after = state ? statuses.find((s) => s.id === state) : null
@@ -667,7 +670,7 @@ export function createWorker(options: WorkerOptions = {}) {
       if (!hasProjectAccess()) throw Object.assign(new Error(needAccessText()), { code: 'capability_denied' })
       const { project } = target
       const name = workspaceName(task)
-      const prompt = projectPrompt(task, { note, notes, cli: cliPath ?? undefined })
+      const prompt = projectPrompt(task, { note, notes, cli: cliPath ?? undefined, ...(chosen ? { project: project.name } : {}) })
       const sentAt = now()
       let created: { workspaceId: string; terminalId?: string }
       try {
@@ -689,7 +692,7 @@ export function createWorker(options: WorkerOptions = {}) {
       }
       let saved = await store.recordWorkspace(task.id, send)
       if (after) saved = await store.update(task.id, { state: after.id, ...(after.kind === 'hold' ? { waiting_on: `${agent} in ${name}` } : {}) })
-      await writeProjectPrefs(home, prefsKey(task.project), { agent, notes, state: state ?? null, keepState: !state, open }).catch((error: unknown) => orca.log(`send choices: ${errorText(error)}`))
+      await writeProjectPrefs(home, prefsKey(chosen ? project.name : task.project), { agent, notes, state: state ?? null, keepState: !state, open }).catch((error: unknown) => orca.log(`send choices: ${errorText(error)}`))
       orca.log(`sent ${task.id} to project ${project.name}: workspace ${name} (${created.workspaceId}) with ${agent}`)
       await refreshWorkspaces([saved], saved.id).catch(() => undefined)
       await refresh(true)
