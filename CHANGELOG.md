@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.6
+
+**Navigation logging off by default; Cmd+[ for a mouse's back button**
+
+No change to the plugin's data or the access it asks for.
+
+- The `nav …` lines of 0.6.5 are off by default: the page sends nothing about back and forward
+  events and the worker writes nothing about them, not even the start line. A plugin setting,
+  **Log back and forward events** (`logNavigation`, off), turns them on, as does
+  `agentTasksDebugNav(true)` in the frame's console (or `?debug-nav`). The start line comes once
+  logging is on, at the start or when it is switched on.
+- With 0.6.5's logging, an MX Master's back button sent no event at all to the panel: Orca does
+  not pass the mouse's back and forward buttons (buttons 4 and 5) to plugin panels. Set to send the
+  keystroke Cmd+[ for Orca alone (in Logi Options+, app-specific settings for Orca: Back button →
+  keystroke ⌘[), the button goes back in Agent Tasks. The README's Shortcuts section has the tip,
+  and the reference says the same under the panel's keys.
+- Tests: the worker writes nothing with the setting off and the console switch off, and writes
+  with either on; in Chrome, the back button and Cmd+[ send nothing to the log until `?debug-nav`.
+
 ## 0.6.5
 
 **The back button's events in the plugin log**

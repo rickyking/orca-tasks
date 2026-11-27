@@ -30,10 +30,10 @@ import { agentFromEnv, dismissSuggestion, SuggestError, suggestMerges, type Sugg
 import { botChatStatus, botChoices, defaultBot, defaultRunOrca, findHandoffChat, listBotChats, listBots, type BotChat, type BotStatus, type RunOrca } from './core/bots.ts'
 import { fromHostApi, matchOrcaProject, summarizeProjects, type OrcaProject } from './core/projects.ts'
 import { writeProjectsCache } from './core/orca-projects.ts'
-import { checkNavLog, NAV_LOG_PER_MINUTE, navLine, navStartLine } from './core/nav-log.ts'
+import { checkNavLog, NAV_LOG_PER_MINUTE, NAV_LOG_SETTING, navLine, navStartLine } from './core/nav-log.ts'
 import type { BotOffer, ProjectOffer, ProjectPrefs, SendPrefs, TaskPaths } from './protocol.ts'
 
-export const VERSION = '0.6.5'
+export const VERSION = '0.6.6'
 const TICK_MS = 2_000
 const STATUS_ITEM = 'today'
 const SIMPLE_TODO_SETTING = 'takeSimpleTodoInbox'
@@ -511,12 +511,15 @@ export function createWorker(options: WorkerOptions = {}) {
 
     // What the sidebar and the board saw of events that could be a mouse's back or forward
     // gesture (core/nav-log.ts), one line each in `orca plugin logs`, at most NAV_LOG_PER_MINUTE a
-    // minute so they never push the other lines out.
+    // minute so they never push the other lines out; only while the setting "Log back and forward
+    // events" or the page's console switch is on.
     let navMinute = 0
     let navLines = 0
     let navDropped = 0
-    orca.panels.handle('tasks.navLog', (raw) => {
-      const { start, entries, dropped } = checkNavLog(raw)
+    orca.panels.handle('tasks.navLog', async (raw) => {
+      const { start, entries, dropped, debug } = checkNavLog(raw)
+      // Nothing unless the setting is on or the page's console switch is.
+      if (!debug && (await orca.settings.get(NAV_LOG_SETTING).catch(() => false)) !== true) return { logged: false }
       const minute = Math.floor(now().getTime() / 60_000)
       if (minute !== navMinute) {
         if (navDropped > 0) orca.log(`nav: ${navDropped} more line(s) left out in the minute before`)

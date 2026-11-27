@@ -467,11 +467,18 @@ focus (click in it first), and Orca's Settings → Shortcuts does not list them.
 | Mouse forward button, Cmd+] | Forward again: the view Back left, or the task it closed; Cmd+Right too (not in a field) |
 | ? | Show or hide the list of these keys |
 
-- **When the mouse's back button does nothing**: mouse software can send it as a mouse button, a
-  key or a swipe, and the page can only see what reaches its own frame. It tells the worker about
-  every event that could be a back or forward gesture, and the worker writes one line each to
-  the plugin's log: run `orca plugin logs rickyking.agent-tasks` (`local.agent-tasks` for a
-  development copy). When the page starts:
+- **A mouse's back button**: Orca does not pass the mouse's back and forward buttons (buttons 4
+  and 5) to plugin panels, so a thumb button does nothing in the panel or the board by itself. Have
+  the mouse software send the keystroke Cmd+[ (and Cmd+] for Forward) for Orca alone, for example
+  Logi Options+'s app-specific settings for Orca: Back button → keystroke ⌘[. The page takes both
+  also from a field.
+- **Logging what the mouse sends** (off by default): turn on the plugin setting **Log back and
+  forward events** (Settings → Plugins → Agent Tasks), or run `agentTasksDebugNav(true)` in the
+  frame's console (or open it with `?debug-nav`). The page then tells the worker about every
+  event that could be a back or forward gesture, and the worker writes one line each to the
+  plugin's log: run `orca plugin logs rickyking.agent-tasks` (`local.agent-tasks` for a
+  development copy). With it off, the worker writes nothing about navigation. When logging
+  starts:
 
   ```
   nav listeners attached: sidebar (views list, details, statuses, menus; top frame; focus=no; host API 1.9; MacIntel): pointerdown, mousedown, pointerup, mouseup, auxclick, keydown, wheel, popstate, hashchange, pagehide, beforeunload, navigate
@@ -491,13 +498,10 @@ focus (click in it first), and Orca's Settings → Shortcuts does not list them.
   nav board/board keydown key=[ code=BracketLeft mods=meta on=page focus=yes -> back
   ```
 
-  No line when you press the button over the panel means the press never reached it: the mouse
-  software sent a swipe, or a key while the keyboard focus was elsewhere in Orca (a key goes to
-  what has the focus, a mouse button to what is under the pointer). The page sends at most 20
-  lines at once and 2 a second after that, and the worker writes at most 60 a minute, then says
-  how many it left out. `agentTasksDebugNav(true)` in the frame's console (or `?debug-nav`) also
-  logs every mouse button and every key with Cmd, Ctrl or Alt to that console;
-  `agentTasksDebugNav(false)` stops it.
+  No line when you press the button over the panel means the press never reached it. The page
+  sends at most 20 lines at once and 2 a second after that, and the worker writes at most 60 a
+  minute, then says how many it left out. The console switch also logs every mouse button and
+  every key with Cmd, Ctrl or Alt to that console; `agentTasksDebugNav(false)` stops it.
 - **Orca's own back**: Orca's **Worktree History Back** and **Forward** (Cmd+Alt+Left and
   Cmd+Alt+Right) step through the workspaces you visited; they are Orca's, not the page's, and
   Orca gives plugins no back or navigation event to follow.

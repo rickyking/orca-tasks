@@ -33,7 +33,7 @@ import { backAction, forwardAction, MOUSE_NAV_EVENTS, MouseNav, ViewHistory, typ
 import { keyTarget as statusKeyTarget, QUICK_ROOM, quickIcon, quickStatuses } from './quick.ts'
 import { keyAction, moveCursor, shortcutList, type FieldPlace, type KeyAction, type KeyScreen, type KeyTarget } from './keys.ts'
 import { botChoices, opensSendMenu, projectChoices } from './send-menu.ts'
-import { NAV_PAGE_EVENTS, navMods, NavThrottle, navWorthy, type NavEntry, type NavLogInput } from '../core/nav-log.ts'
+import { NAV_LOG_SETTING, NAV_PAGE_EVENTS, navMods, NavThrottle, navWorthy, type NavEntry, type NavLogInput } from '../core/nav-log.ts'
 
 /** The sidebar panel, or the board tab. */
 const SIDEBAR = document.documentElement.dataset.mode === 'sidebar'
@@ -2482,21 +2482,25 @@ for (const type of MOUSE_NAV_EVENTS) {
   )
 }
 
-// What a mouse really sends, for when its back button does nothing. Every event that could be a
-// back or forward gesture (core/nav-log.ts: buttons 3 and up, Cmd/Alt/Ctrl with [ ] Left Right,
-// the Browser Back and Forward keys, a sideways wheel, the page's own navigation events) goes to
-// the worker, which writes it to `orca plugin logs` as a `nav …` line: its type, button or key,
-// modifiers and where it landed, never anything about tasks. The page sends at most 20 at once
-// and 2 a second after that; the worker writes at most 60 a minute. `agentTasksDebugNav(true)` in
-// the frame's console (or `?debug-nav`) also logs every mouse button and every key with Cmd, Ctrl
-// or Alt to that console.
+// What a mouse really sends, for when its back button does nothing. Off unless asked for: the
+// plugin setting "Log back and forward events" (NAV_LOG_SETTING), or `agentTasksDebugNav(true)` in
+// the frame's console (or `?debug-nav`). Then every event that could be a back or forward gesture
+// (core/nav-log.ts: buttons 3 and up, Cmd/Alt/Ctrl with [ ] Left Right, the Browser Back and
+// Forward keys, a sideways wheel, the page's own navigation events) goes to the worker, which
+// writes it to `orca plugin logs` as a `nav …` line: its type, button or key, modifiers and where
+// it landed, never anything about tasks. The page sends at most 20 at once and 2 a second after
+// that; the worker writes at most 60 a minute. The console switch also logs every mouse button
+// and every key with Cmd, Ctrl or Alt to that console.
 let navDebug = new URLSearchParams(location.search).has('debug-nav')
+/** The plugin setting "Log back and forward events". */
+let navSetting = false
 try {
   navDebug ||= localStorage.getItem('agent-tasks-debug-nav') === '1'
 } catch {
   // No storage: the toggle lasts until the page reloads.
 }
 ;(globalThis as unknown as { agentTasksDebugNav: (on?: boolean) => boolean }).agentTasksDebugNav = (on = true) => {
+  const was = navLogging()
   navDebug = on
   try {
     if (on) localStorage.setItem('agent-tasks-debug-nav', '1')
@@ -2504,7 +2508,13 @@ try {
   } catch {
     // No storage.
   }
+  if (!was && navLogging()) sendNavStart()
   return navDebug
+}
+
+/** Whether the page tells the worker about back and forward events. */
+function navLogging(): boolean {
+  return navDebug || navSetting
 }
 
 const navThrottle = new NavThrottle()
@@ -2514,8 +2524,8 @@ let navTimer: ReturnType<typeof setTimeout> | null = null
 let navForward = true
 
 function sendNavLog(input: NavLogInput): void {
-  if (!navForward) return
-  request('tasks.navLog', input).catch(() => {
+  if (!navForward || !navLogging()) return
+  request('tasks.navLog', { ...input, ...(navDebug ? { debug: true } : {}) }).catch(() => {
     navForward = false
   })
 }
@@ -2556,7 +2566,7 @@ function noteNav(e: Event, taken: string, detail?: string): NavEntry | null {
   }
   const worthy = navWorthy(raw)
   if (navDebug && (worthy || (mouse && !wheel) || (key && (key.metaKey || key.ctrlKey || key.altKey)))) console.debug('agent-tasks nav', { ...raw, taken })
-  if (!worthy || !navThrottle.allow(e.type, e.timeStamp)) return null
+  if (!worthy || !navLogging() || !navThrottle.allow(e.type, e.timeStamp)) return null
   const entry: NavEntry = {
     surface: SURFACE,
     view: navView(),
@@ -2599,19 +2609,32 @@ for (const type of NAV_PAGE_EVENTS) window.addEventListener(type, (e) => void no
 const navigationApi = (window as unknown as { navigation?: EventTarget }).navigation
 navigationApi?.addEventListener('navigate', (e) => void noteNav(e, 'none', String((e as unknown as { navigationType?: string }).navigationType ?? '')))
 
-// Once, at the start: that the listeners are attached, and in which views (all of them: the
-// list, the board, the details, Statuses and the menus are this one page).
-sendNavLog({
-  start: {
-    surface: SURFACE,
-    views: SIDEBAR ? ['list', 'details', 'statuses', 'menus'] : ['list', 'board', 'details', 'statuses', 'menus'],
-    events: [...MOUSE_NAV_EVENTS, 'keydown', 'wheel', ...NAV_PAGE_EVENTS, ...(navigationApi ? ['navigate'] : [])],
-    top: window === window.top,
-    focus: document.hasFocus(),
-    hostApi: orca.api ? `${orca.api.major}.${orca.api.minor}` : '?',
-    platform: navigator.platform || '?'
-  }
-})
+/** Once logging is on (at the start, or when it is switched on): that the listeners are attached,
+ *  and in which views (all of them: the list, the board, the details, Statuses and the menus are
+ *  this one page). */
+function sendNavStart(): void {
+  sendNavLog({
+    start: {
+      surface: SURFACE,
+      views: SIDEBAR ? ['list', 'details', 'statuses', 'menus'] : ['list', 'board', 'details', 'statuses', 'menus'],
+      events: [...MOUSE_NAV_EVENTS, 'keydown', 'wheel', ...NAV_PAGE_EVENTS, ...(navigationApi ? ['navigate'] : [])],
+      top: window === window.top,
+      focus: document.hasFocus(),
+      hostApi: orca.api ? `${orca.api.major}.${orca.api.minor}` : '?',
+      platform: navigator.platform || '?'
+    }
+  })
+}
+
+/** Reads the setting, and starts logging when it (or the console switch) turns logging on. */
+async function readNavSetting(): Promise<void> {
+  const was = navLogging()
+  navSetting = (await orca.settings?.get(NAV_LOG_SETTING).catch(() => false)) === true
+  if (!was && navLogging()) sendNavStart()
+}
+if (navDebug) sendNavStart()
+void readNavSetting()
+orca.settings?.onDidChange?.(() => void readNavSetting())
 
 document.addEventListener('keydown', (e) => {
   if (e.isComposing) return

@@ -967,7 +967,7 @@ test('the send menu (▷): bots and projects in one click, without opening the t
   }
 })
 
-test('the back/forward diagnostics go to the worker\'s log: the start line, the thumb buttons and the Back keys, nothing else', { skip: chromePath ? false : 'no Chrome found (set CHROME_BIN)' }, async () => {
+test('the back/forward diagnostics: off by default; switched on, the start line, the thumb buttons and the Back keys go to the worker\'s log, nothing else', { skip: chromePath ? false : 'no Chrome found (set CHROME_BIN)' }, async () => {
   const { server, port } = await serve()
   const browser = await Browser.open()
   const base = `http://127.0.0.1:${port}`
@@ -978,9 +978,20 @@ test('the back/forward diagnostics go to the worker\'s log: the start line, the 
   }
   const entries = async () => (await logged()).flatMap((c) => c.entries ?? [])
   try {
+    // Off by default: the thumb button and Cmd+[ go back, and nothing is sent to the log.
     await browser.load(`${base}/sidebar`, 380, 1000)
+    const quiet = await browser.point('.row', 'Reply to Alice', true)
+    await browser.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: quiet.x, y: quiet.y, button: 'back', buttons: 8, clickCount: 1 })
+    await browser.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: quiet.x, y: quiet.y, button: 'back', buttons: 0, clickCount: 1 })
+    await browser.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: '[', code: 'BracketLeft', windowsVirtualKeyCode: 219, modifiers: 4 })
+    await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: '[', code: 'BracketLeft', windowsVirtualKeyCode: 219, modifiers: 4 })
+    assert.deepEqual(await logged(), [], 'off unless switched on')
+
+    // Switched on (?debug-nav; agentTasksDebugNav(true) or the plugin setting do the same).
+    await browser.load(`${base}/sidebar?debug-nav`, 380, 1000)
     const first = await logged()
     assert.equal(first.length, 1, 'once at the start')
+    assert.equal((first[0] as { debug?: boolean }).debug, true)
     assert.deepEqual(first[0].start?.views, ['list', 'details', 'statuses', 'menus'])
     assert.deepEqual(first[0].start?.events.slice(0, 7), ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'auxclick', 'keydown', 'wheel'])
     assert.equal((first[0].start as unknown as { surface: string }).surface, 'sidebar')

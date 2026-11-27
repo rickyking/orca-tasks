@@ -520,9 +520,20 @@ test('send to another project (the send menu): the workspace starts there, the c
   await t.stop()
 })
 
-test('the page\'s back/forward diagnostics land in the plugin log, at most 60 lines a minute', async () => {
+test('the page\'s back/forward diagnostics: nothing in the log unless the setting or the console switch is on', async () => {
+  const t = await start()
+  const before = t.worker.logs.length
+  const entry = { surface: 'sidebar', view: 'list', type: 'pointerdown', button: 3, buttons: 8, pointerType: 'mouse', mods: '', target: 'row', focus: true, taken: 'stopped' }
+  const off = await t.worker.request('tasks.navLog', { start: { surface: 'sidebar', views: ['list'], events: ['pointerdown'], top: true, focus: true, hostApi: '1.9', platform: 'MacIntel' }, entries: [entry] })
+  assert.deepEqual([off, t.worker.logs.slice(before)], [{ logged: false }, []], 'off by default')
+  assert.deepEqual(await t.worker.request('tasks.navLog', { entries: [entry], debug: true }), { logged: true })
+  assert.deepEqual(t.worker.logs.slice(before), ['nav sidebar/list pointerdown button=3 buttons=8 pointer=mouse mods=none on=row focus=yes -> stopped'], 'agentTasksDebugNav(true) in the page')
+  await t.stop()
+})
+
+test('the page\'s back/forward diagnostics land in the plugin log with the setting on, at most 60 lines a minute', async () => {
   let clock = new Date('2026-11-24T10:00:00.000Z')
-  const t = await start({ now: () => clock })
+  const t = await start({ now: () => clock, settings: { logNavigation: true } })
   const before = t.worker.logs.length
   await t.worker.request('tasks.navLog', { start: { surface: 'sidebar', views: ['list', 'details', 'statuses', 'menus'], events: ['pointerdown', 'keydown'], top: true, focus: true, hostApi: '1.9', platform: 'MacIntel' } })
   await t.worker.request('tasks.navLog', {

@@ -128,9 +128,10 @@ Besides the capabilities, the worker runs two programs on your machine:
 - **Send to the project** makes the task the first prompt of a coding agent in a workspace the
   plugin creates, as Orca's own workspace dialog would.
 - **The plugin's log** (`orca plugin logs rickyking.agent-tasks`, kept by Orca on your machine)
-  gets a `nav …` line for each mouse or key event that could be a back or forward gesture: its
-  type, button or key, modifiers and where in the page it landed, never anything about a task or
-  anything you type. See the [reference](docs/reference.md#in-the-panel-and-on-the-board).
+  gets nothing about navigation unless you turn on the setting **Log back and forward events**:
+  then a `nav …` line for each mouse or key event that could be a back or forward gesture, with
+  its type, button or key, modifiers and where in the page it landed, never anything about a
+  task or anything you type. See the [reference](docs/reference.md#in-the-panel-and-on-the-board).
 
 ## Collect tasks from anywhere
 
@@ -207,7 +208,14 @@ statuses, bots, merging and the inbox.
 
 You can change them in Settings → **Shortcuts**, group **Plugins**. In the panel and on the board,
 J/K or the arrows move, Enter opens, X or Space ticks, P puts on hold, C cancels, N adds, Esc
-closes, and ? lists them all. See [Shortcuts](docs/reference.md#shortcuts).
+closes, Cmd+[ goes back (closes what is on top, then the view before), Cmd+] goes forward, and ?
+lists them all. See [Shortcuts](docs/reference.md#shortcuts).
+
+**Tip: a mouse's back button.** Orca does not pass the mouse's back and forward buttons (buttons 4
+and 5) to plugin panels, so a thumb button does nothing there by itself. Have your mouse software
+send the keystroke Cmd+[ for Back (and Cmd+] for Forward) instead, if it can do so for Orca alone:
+in Logi Options+, for example, add Orca under the app-specific settings and set the Back button to
+the keystroke ⌘[. The panel and the board then go back with it, with the pointer over them.
 
 ## Where your data lives
 

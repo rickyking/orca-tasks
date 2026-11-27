@@ -3,7 +3,7 @@
   "manifestVersion": 2,
   "id": "agent-tasks",
   "name": "Agent Tasks",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Scheduled bots collect tasks from your other apps into one board in Orca. From it, hand any task to a bot or start it in its project with a coding agent.",
   "license": "MIT",
   "author": {
@@ -125,6 +125,13 @@
           "12:00",
           "17:00"
         ]
+      },
+      {
+        "key": "logNavigation",
+        "title": "Log back and forward events",
+        "description": "Write a line to the plugin's log (orca plugin logs) for each mouse or key event in the panel or the board that could be a back or forward gesture, to find out what a mouse's back button sends. No task content.",
+        "type": "boolean",
+        "default": false
       }
     ],
     "customEditors": [

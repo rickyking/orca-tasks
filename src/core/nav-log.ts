@@ -1,5 +1,6 @@
 // What the sidebar and the board tell the worker about events that could be a mouse's back or
-// forward gesture, so they land in `orca plugin logs <plugin>` without opening DevTools. The page
+// forward gesture, so they land in `orca plugin logs <plugin>` without opening DevTools; only while
+// the plugin setting NAV_LOG_SETTING or the page's console switch is on. The page
 // picks the events (`navWorthy`), the worker checks what came (`checkNavLog`) and writes one line
 // each (`navLine`), at most NAV_LOG_PER_MINUTE a minute. Nothing about tasks is in them: the event's
 // type, its button or key (only the keys that could be Back or Forward), the modifiers, and where
@@ -64,7 +65,12 @@ export interface NavLogInput {
   start?: NavStart
   entries?: NavEntry[]
   dropped?: number
+  /** Switched on in the page's console (`agentTasksDebugNav(true)` or `?debug-nav`). */
+  debug?: boolean
 }
+
+/** The plugin setting that turns the `nav …` lines on (off by default). */
+export const NAV_LOG_SETTING = 'logNavigation'
 
 /** The keys that could be Back or Forward with Cmd, Alt or Ctrl (what mouse software sends). */
 const NAV_KEYS: ReadonlySet<string> = new Set(['[', ']', 'ArrowLeft', 'ArrowRight', 'BracketLeft', 'BracketRight'])
@@ -148,7 +154,7 @@ function navKey(value: unknown): string | undefined {
 }
 
 /** What `tasks.navLog` accepts: at most 50 entries, each field a short word or a number. */
-export function checkNavLog(input: unknown): { start: NavStart | null; entries: NavEntry[]; dropped: number } {
+export function checkNavLog(input: unknown): { start: NavStart | null; entries: NavEntry[]; dropped: number; debug: boolean } {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
   const s = raw.start && typeof raw.start === 'object' ? (raw.start as Record<string, unknown>) : null
   const list = (value: unknown) => (Array.isArray(value) ? value.slice(0, 12).map((v) => word(v)) : [])
@@ -169,7 +175,7 @@ export function checkNavLog(input: unknown): { start: NavStart | null; entries: 
     if (e.detail !== undefined && e.detail !== '') entry.detail = word(e.detail)
     return [entry]
   })
-  return { start, entries, dropped: Math.max(0, int(raw.dropped) ?? 0) }
+  return { start, entries, dropped: Math.max(0, int(raw.dropped) ?? 0), debug: raw.debug === true }
 }
 
 /** The log line for one event: `nav sidebar/list+details pointerdown button=3 buttons=8

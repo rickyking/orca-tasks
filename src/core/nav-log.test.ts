@@ -58,6 +58,7 @@ test('the worker takes short words and numbers only: no typed text, no task cont
     'nav board/board keydown key=? code=? mods=meta on=page focus=yes -> none',
     'nav board/? wheel dx=-121 dy=0 mods=none on=page focus=yes -> none'
   ])
-  assert.deepEqual(checkNavLog(null), { start: null, entries: [], dropped: 0 })
+  assert.deepEqual(checkNavLog(null), { start: null, entries: [], dropped: 0, debug: false })
+  assert.equal(checkNavLog({ debug: true }).debug, true, 'the page\'s console switch')
   assert.equal(checkNavLog({ entries: Array.from({ length: 80 }, () => ({ type: 'auxclick' })) }).entries.length, 50)
 })
