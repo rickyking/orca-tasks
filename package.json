@@ -1,0 +1,21 @@
+{
+  "name": "orca-tasks",
+  "version": "0.6.2",
+  "private": true,
+  "description": "Orca plugin: a task list that Orca agents and people share",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "orca-tasks": "bin/orca-tasks"
+  },
+  "scripts": {
+    "test": "node --test --disable-warning=ExperimentalWarning src/core/*.test.ts src/cli.test.ts src/send-form.test.ts src/manifest.test.ts src/board/drag.test.ts src/board/keys.test.ts src/board/history.test.ts src/board/quick.test.ts",
+    "test:orca": "orca plugin test .",
+    "typecheck": "orca plugin types . && npx -y -p typescript@5.9.3 tsc -p .",
+    "validate": "orca plugin validate .",
+    "test:browser": "node --test --disable-warning=ExperimentalWarning src/board/board.browser.test.ts"
+  }
+}

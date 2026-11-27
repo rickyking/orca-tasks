@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs the orca-tasks CLI from this checkout. Needs Node 22.18 or newer on PATH.
+here=$(cd "$(dirname "$0")/.." && pwd)
+exec node --disable-warning=ExperimentalWarning "$here/src/cli-bin.ts" "$@"
