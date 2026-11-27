@@ -127,6 +127,10 @@ Besides the capabilities, the worker runs two programs on your machine:
   The bot's agent then works with it as it works with any message.
 - **Send to the project** makes the task the first prompt of a coding agent in a workspace the
   plugin creates, as Orca's own workspace dialog would.
+- **The plugin's log** (`orca plugin logs rickyking.agent-tasks`, kept by Orca on your machine)
+  gets a `nav …` line for each mouse or key event that could be a back or forward gesture: its
+  type, button or key, modifiers and where in the page it landed, never anything about a task or
+  anything you type. See the [reference](docs/reference.md#in-the-panel-and-on-the-board).
 
 ## Collect tasks from anywhere
 

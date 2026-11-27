@@ -33,6 +33,7 @@ import { backAction, forwardAction, MOUSE_NAV_EVENTS, MouseNav, ViewHistory, typ
 import { keyTarget as statusKeyTarget, QUICK_ROOM, quickIcon, quickStatuses } from './quick.ts'
 import { keyAction, moveCursor, shortcutList, type FieldPlace, type KeyAction, type KeyScreen, type KeyTarget } from './keys.ts'
 import { botChoices, opensSendMenu, projectChoices } from './send-menu.ts'
+import { NAV_PAGE_EVENTS, navMods, NavThrottle, navWorthy, type NavEntry, type NavLogInput } from '../core/nav-log.ts'
 
 /** The sidebar panel, or the board tab. */
 const SIDEBAR = document.documentElement.dataset.mode === 'sidebar'
@@ -2466,7 +2467,7 @@ for (const type of MOUSE_NAV_EVENTS) {
     type,
     (e: MouseEvent) => {
       const { prevent, step } = mouseNavigation.event(type, e.button, e.timeStamp)
-      debugNav(e, step ?? (prevent ? 'stopped' : null))
+      noteNav(e, step ?? (prevent ? 'stopped' : 'none'))
       if (!prevent) return
       e.preventDefault()
       e.stopPropagation()
@@ -2481,10 +2482,14 @@ for (const type of MOUSE_NAV_EVENTS) {
   )
 }
 
-// What a mouse really sends, for when its back button does nothing: the console gets a line
-// ("agent-tasks nav") for every event of buttons 3 and up and every key taken as Back or Forward;
-// with `agentTasksDebugNav(true)` in the frame's console (or `?debug-nav` in its address), for
-// every mouse button and every key with Cmd, Ctrl or Alt too.
+// What a mouse really sends, for when its back button does nothing. Every event that could be a
+// back or forward gesture (core/nav-log.ts: buttons 3 and up, Cmd/Alt/Ctrl with [ ] Left Right,
+// the Browser Back and Forward keys, a sideways wheel, the page's own navigation events) goes to
+// the worker, which writes it to `orca plugin logs` as a `nav …` line: its type, button or key,
+// modifiers and where it landed, never anything about tasks. The page sends at most 20 at once
+// and 2 a second after that; the worker writes at most 60 a minute. `agentTasksDebugNav(true)` in
+// the frame's console (or `?debug-nav`) also logs every mouse button and every key with Cmd, Ctrl
+// or Alt to that console.
 let navDebug = new URLSearchParams(location.search).has('debug-nav')
 try {
   navDebug ||= localStorage.getItem('agent-tasks-debug-nav') === '1'
@@ -2502,28 +2507,111 @@ try {
   return navDebug
 }
 
-function debugNav(e: MouseEvent | KeyboardEvent, taken: string | null): void {
-  const mouse = e instanceof MouseEvent
-  if (!navDebug && !taken && !(mouse && e.button >= 3)) return
-  console.debug('agent-tasks nav', {
-    type: e.type,
-    ...(mouse ? { button: e.button, buttons: e.buttons, pointerType: (e as PointerEvent).pointerType ?? null } : { key: e.key, code: e.code }),
-    meta: e.metaKey,
-    ctrl: e.ctrlKey,
-    alt: e.altKey,
-    shift: e.shiftKey,
-    target: (e.target as HTMLElement | null)?.tagName ?? null,
-    taken
+const navThrottle = new NavThrottle()
+let navQueue: NavEntry[] = []
+let navTimer: ReturnType<typeof setTimeout> | null = null
+/** Off once the worker does not take `tasks.navLog` (an older worker during an update). */
+let navForward = true
+
+function sendNavLog(input: NavLogInput): void {
+  if (!navForward) return
+  request('tasks.navLog', input).catch(() => {
+    navForward = false
   })
 }
+
+/** What is shown, for a log line: `list`, `board` or `statuses`, with `+details` and `+menu`. */
+function navView(): string {
+  return `${state.settings ? 'statuses' : SIDEBAR ? 'list' : state.view}${state.selected ? '+details' : ''}${closeMenu ? '+menu' : ''}`
+}
+
+/** Where an event landed, by the kind of element only. */
+function navTarget(target: EventTarget | null): string {
+  const el = target instanceof Element ? target : null
+  if (!el) return 'page'
+  if (el.closest('.menu')) return 'menu'
+  if (el.closest('input, textarea, select, [contenteditable]')) return 'field'
+  if (el.closest('.card')) return 'card'
+  if (el.closest('.row')) return 'row'
+  if (el.closest('.details')) return 'details'
+  if (el.closest('.header')) return 'header'
+  return 'page'
+}
+
+/** Notes event `e` when it could be a back or forward gesture; returns its entry, so a key's
+ *  listener can fill in what the page did with it. */
+function noteNav(e: Event, taken: string, detail?: string): NavEntry | null {
+  const mouse = e instanceof MouseEvent
+  const key = e instanceof KeyboardEvent ? e : null
+  const wheel = e instanceof WheelEvent ? e : null
+  const raw = {
+    type: e.type,
+    ...(mouse ? { button: e.button, buttons: e.buttons } : {}),
+    ...(key ? { key: key.key, code: key.code } : {}),
+    ...(wheel ? { deltaX: wheel.deltaX, deltaY: wheel.deltaY } : {}),
+    meta: mouse || key ? (e as MouseEvent).metaKey : false,
+    ctrl: mouse || key ? (e as MouseEvent).ctrlKey : false,
+    alt: mouse || key ? (e as MouseEvent).altKey : false,
+    shift: mouse || key ? (e as MouseEvent).shiftKey : false
+  }
+  const worthy = navWorthy(raw)
+  if (navDebug && (worthy || (mouse && !wheel) || (key && (key.metaKey || key.ctrlKey || key.altKey)))) console.debug('agent-tasks nav', { ...raw, taken })
+  if (!worthy || !navThrottle.allow(e.type, e.timeStamp)) return null
+  const entry: NavEntry = {
+    surface: SURFACE,
+    view: navView(),
+    type: e.type,
+    ...(mouse && !wheel ? { button: e.button, buttons: e.buttons } : {}),
+    ...(e instanceof PointerEvent ? { pointerType: e.pointerType } : {}),
+    ...(key ? { key: key.key, code: key.code } : {}),
+    ...(wheel ? { deltaX: wheel.deltaX, deltaY: wheel.deltaY } : {}),
+    ...(detail ? { detail } : {}),
+    mods: navMods(raw),
+    target: navTarget(e.target),
+    focus: document.hasFocus(),
+    taken
+  }
+  navQueue.push(entry)
+  navTimer ??= setTimeout(() => {
+    navTimer = null
+    const entries = navQueue
+    const dropped = navThrottle.dropped
+    navQueue = []
+    navThrottle.dropped = 0
+    sendNavLog({ entries, ...(dropped ? { dropped } : {}) })
+  }, 250)
+  return entry
+}
+
+/** The key event the window saw last, so the page's key listener can say what it did with it. */
+let navKey: { event: KeyboardEvent; entry: NavEntry } | null = null
 
 window.addEventListener(
   'keydown',
   (e) => {
-    if (navDebug && (e.metaKey || e.ctrlKey || e.altKey || e.key.startsWith('Browser'))) debugNav(e, null)
+    const entry = noteNav(e, 'none')
+    navKey = entry ? { event: e, entry } : null
   },
   true
 )
+window.addEventListener('wheel', (e) => void noteNav(e, 'none'), { capture: true, passive: true })
+for (const type of NAV_PAGE_EVENTS) window.addEventListener(type, (e) => void noteNav(e, 'none'), true)
+const navigationApi = (window as unknown as { navigation?: EventTarget }).navigation
+navigationApi?.addEventListener('navigate', (e) => void noteNav(e, 'none', String((e as unknown as { navigationType?: string }).navigationType ?? '')))
+
+// Once, at the start: that the listeners are attached, and in which views (all of them: the
+// list, the board, the details, Statuses and the menus are this one page).
+sendNavLog({
+  start: {
+    surface: SURFACE,
+    views: SIDEBAR ? ['list', 'details', 'statuses', 'menus'] : ['list', 'board', 'details', 'statuses', 'menus'],
+    events: [...MOUSE_NAV_EVENTS, 'keydown', 'wheel', ...NAV_PAGE_EVENTS, ...(navigationApi ? ['navigate'] : [])],
+    top: window === window.top,
+    focus: document.hasFocus(),
+    hostApi: orca.api ? `${orca.api.major}.${orca.api.minor}` : '?',
+    platform: navigator.platform || '?'
+  }
+})
 
 document.addEventListener('keydown', (e) => {
   if (e.isComposing) return
@@ -2540,7 +2628,7 @@ document.addEventListener('keydown', (e) => {
     { key: e.key, code: e.code, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, target, field: target === 'field' && el ? fieldPlace(el) : undefined },
     keyScreen()
   )
-  if (action === 'back' || action === 'forward') debugNav(e, action)
+  if (navKey?.event === e) navKey.entry.taken = action
   if (!leave && action === 'none') return
   e.preventDefault()
   // Leaving a details field saves it (its blur handler), before anything closes.

@@ -520,6 +520,33 @@ test('send to another project (the send menu): the workspace starts there, the c
   await t.stop()
 })
 
+test('the page\'s back/forward diagnostics land in the plugin log, at most 60 lines a minute', async () => {
+  let clock = new Date('2026-11-24T10:00:00.000Z')
+  const t = await start({ now: () => clock })
+  const before = t.worker.logs.length
+  await t.worker.request('tasks.navLog', { start: { surface: 'sidebar', views: ['list', 'details', 'statuses', 'menus'], events: ['pointerdown', 'keydown'], top: true, focus: true, hostApi: '1.9', platform: 'MacIntel' } })
+  await t.worker.request('tasks.navLog', {
+    entries: [
+      { surface: 'sidebar', view: 'list', type: 'pointerdown', button: 3, buttons: 8, pointerType: 'mouse', mods: '', target: 'row', focus: true, taken: 'stopped' },
+      { surface: 'sidebar', view: 'list', type: 'keydown', key: '[', code: 'BracketLeft', mods: 'meta', target: 'page', focus: true, taken: 'back' }
+    ]
+  })
+  assert.deepEqual(t.worker.logs.slice(before), [
+    'nav listeners attached: sidebar (views list, details, statuses, menus; top frame; focus=yes; host API 1.9; MacIntel): pointerdown, keydown',
+    'nav sidebar/list pointerdown button=3 buttons=8 pointer=mouse mods=none on=row focus=yes -> stopped',
+    'nav sidebar/list keydown key=[ code=BracketLeft mods=meta on=page focus=yes -> back'
+  ])
+  const many = Array.from({ length: 50 }, () => ({ surface: 'board', view: 'board', type: 'auxclick', button: 3, buttons: 0, mods: '', target: 'card', focus: false, taken: 'back' }))
+  await t.worker.request('tasks.navLog', { entries: many })
+  await t.worker.request('tasks.navLog', { entries: many, dropped: 3 })
+  assert.equal(t.worker.logs.filter((l) => l.startsWith('nav board/')).length, 58, '60 a minute, with the two before')
+  clock = new Date('2026-11-24T10:01:00.000Z')
+  await t.worker.request('tasks.navLog', { entries: many.slice(0, 1) })
+  assert.ok(t.worker.logs.includes('nav: 43 more line(s) left out in the minute before'))
+  assert.equal(t.worker.logs.at(-1), 'nav board/board auxclick button=3 buttons=0 mods=none on=card focus=no -> back')
+  await t.stop()
+})
+
 test('send to the project: without the new capabilities it says what to approve', async () => {
   const orcaHost = projectHost()
   const capabilities = ['settings:own', 'workspace:read', 'workspace:write', 'notifications:show', 'terminal:send', 'terminal:read']

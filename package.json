@@ -1,6 +1,6 @@
 {
   "name": "orca-tasks",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "private": true,
   "description": "Orca plugin: a task list that Orca agents and people share",
   "type": "module",

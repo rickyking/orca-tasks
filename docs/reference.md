@@ -467,12 +467,40 @@ focus (click in it first), and Orca's Settings → Shortcuts does not list them.
 | Mouse forward button, Cmd+] | Forward again: the view Back left, or the task it closed; Cmd+Right too (not in a field) |
 | ? | Show or hide the list of these keys |
 
-- **When the mouse's back button does nothing**: mouse software can send it as a key, a mouse
-  button or a swipe, and a swipe never reaches the page. The page logs a line starting
-  `agent-tasks nav` to the console of its frame for buttons 3 and up and for every key it takes as
-  Back or Forward; run `agentTasksDebugNav(true)` in that console (or open it with `?debug-nav`)
-  to log every mouse button and every key with Cmd, Ctrl or Alt, and `agentTasksDebugNav(false)`
-  to stop.
+- **When the mouse's back button does nothing**: mouse software can send it as a mouse button, a
+  key or a swipe, and the page can only see what reaches its own frame. It tells the worker about
+  every event that could be a back or forward gesture, and the worker writes one line each to
+  the plugin's log: run `orca plugin logs rickyking.agent-tasks` (`local.agent-tasks` for a
+  development copy). When the page starts:
+
+  ```
+  nav listeners attached: sidebar (views list, details, statuses, menus; top frame; focus=no; host API 1.9; MacIntel): pointerdown, mousedown, pointerup, mouseup, auxclick, keydown, wheel, popstate, hashchange, pagehide, beforeunload, navigate
+  ```
+
+  Then one line per event: the thumb buttons (button 3 or more, or held: `buttons` 8 or 16),
+  Cmd, Alt or Ctrl with `[`, `]`, Left or Right, the Browser Back and Forward keys, a sideways
+  wheel (40 pixels or more, once per 500 ms) and the page's own navigation events, with the
+  surface and view (`sidebar/list+details`, `board/board+menu`), what it landed on (`row`,
+  `card`, `details`, `menu`, `header`, `field`, `page`), whether the frame had the keyboard focus,
+  and what the page did (`back`, `forward`, `stopped` for the other events of a press that
+  already stepped, another key action, or `none`):
+
+  ```
+  nav sidebar/list pointerdown button=3 buttons=8 pointer=mouse mods=none on=row focus=yes -> stopped
+  nav sidebar/list pointerup button=3 buttons=0 pointer=mouse mods=none on=row focus=yes -> back
+  nav board/board keydown key=[ code=BracketLeft mods=meta on=page focus=yes -> back
+  ```
+
+  No line when you press the button over the panel means the press never reached it: the mouse
+  software sent a swipe, or a key while the keyboard focus was elsewhere in Orca (a key goes to
+  what has the focus, a mouse button to what is under the pointer). The page sends at most 20
+  lines at once and 2 a second after that, and the worker writes at most 60 a minute, then says
+  how many it left out. `agentTasksDebugNav(true)` in the frame's console (or `?debug-nav`) also
+  logs every mouse button and every key with Cmd, Ctrl or Alt to that console;
+  `agentTasksDebugNav(false)` stops it.
+- **Orca's own back**: Orca's **Worktree History Back** and **Forward** (Cmd+Alt+Left and
+  Cmd+Alt+Right) step through the workspaces you visited; they are Orca's, not the page's, and
+  Orca gives plugins no back or navigation event to follow.
 - **Typing is never a shortcut**: while the focus is in a text field, a select or a checkbox, every
   key is the field's, except Esc and Cmd/Ctrl+Enter. A focused button takes Enter and Space.
 - **Esc does not lose what you typed**: in a field of the details (title, notes, tags, waiting on)

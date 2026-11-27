@@ -161,7 +161,8 @@ const handlers: Record<string, (input: never) => unknown> = {
     }
   },
   'tasks.dismissMerge': () => ({ dismissed: true }),
-  'tasks.openBoard': () => ({ opened: false, reason: 'test' })
+  'tasks.openBoard': () => ({ opened: false, reason: 'test' }),
+  'tasks.navLog': () => ({ logged: true })
 }
 
 const w = window as unknown as Record<string, unknown>

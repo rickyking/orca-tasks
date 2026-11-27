@@ -4,6 +4,7 @@ import type { Bot, BotStatus } from './core/bots.ts'
 import type { CreatedChoice, DueChoice, PriorityChoice } from './core/merge.ts'
 import type { WorkspaceStatus } from './core/project-send.ts'
 import type { OrcaProject, ProjectSummary } from './core/projects.ts'
+import type { NavLogInput } from './core/nav-log.ts'
 import type { BotSendInput, ProjectSendInput } from './core/send-input.ts'
 import type { SuggestResult } from './core/suggest.ts'
 import type { StatusOp } from './core/statuses.ts'
@@ -145,6 +146,9 @@ declare module 'orca' {
     'tasks.takeBack': { input: { id: string }; output: { task: Task } }
     /** Opens the board (the center tab) in Orca's focused workspace. */
     'tasks.openBoard': { output: { opened: boolean; reason?: string } }
+    /** Writes what the page saw of events that could be a mouse's back or forward gesture to the
+     *  plugin's log (core/nav-log.ts); nothing about tasks. */
+    'tasks.navLog': { input: NavLogInput; output: { logged: boolean } }
   }
   interface PluginPanelEvents {
     /** Posted to every open panel when the file changed, from the panel, an agent or the inbox,

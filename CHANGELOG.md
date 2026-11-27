@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.5
+
+**The back button's events in the plugin log**
+
+No change to the plugin's data or the access it asks for.
+
+- The sidebar and the board tell the worker about every event that could be a mouse's back or
+  forward gesture, and the worker writes one `nav …` line each to the plugin's log, so `orca
+  plugin logs rickyking.agent-tasks` shows what the mouse really sends without opening DevTools.
+  On by default. The events: `pointerdown`, `pointerup`, `mousedown`, `mouseup` and `auxclick` of
+  button 3 or more (or with `buttons` 8 or 16 held); a key with Cmd, Alt or Ctrl and `[`, `]`,
+  Left or Right, and the Browser Back and Forward keys; a sideways wheel of 40 pixels or more;
+  `popstate`, `hashchange`, `pagehide`, `beforeunload` and the Navigation API's `navigate`. Each
+  line has the type, button and buttons or key and code, the modifiers, the pointer type, the
+  surface and view, what it landed on (row, card, details, menu, header, field, page), whether
+  the frame had the focus, and what the page did with it. Nothing about tasks, and no key
+  outside that list.
+- One line when the page starts: that the listeners are attached, on which surface, in which
+  views (all of them are one page), and the events.
+- Rate limits: the page sends at most 20 lines at once and 2 a second after that, a sideways
+  wheel at most once per 500 ms; the worker writes at most 60 a minute and then says how many it
+  left out.
+- Orca gives plugins no back or navigation event (its own Worktree History Back, Cmd+Alt+Left,
+  is handled in Orca's main process and its window has no handler for the mouse's back button),
+  so the page's own listeners are the only ones; the reference says so.
+- The console logging of 0.6.4 is behind `agentTasksDebugNav(true)` (or `?debug-nav`) only.
+- Tests: which events are logged and what a line says (`src/core/nav-log.test.ts`), the worker's
+  limit, and in Chrome: the start line, the back button's pointer events over a row with what
+  the page did, Cmd+[ and Cmd+Alt+Left, one line for a sideways swipe, and none for a left click
+  or typing.
+
 ## 0.6.4
 
 **Send from ▷ on a task; the mouse back button on macOS**

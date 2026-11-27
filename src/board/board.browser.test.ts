@@ -967,6 +967,71 @@ test('the send menu (▷): bots and projects in one click, without opening the t
   }
 })
 
+test('the back/forward diagnostics go to the worker\'s log: the start line, the thumb buttons and the Back keys, nothing else', { skip: chromePath ? false : 'no Chrome found (set CHROME_BIN)' }, async () => {
+  const { server, port } = await serve()
+  const browser = await Browser.open()
+  const base = `http://127.0.0.1:${port}`
+  type Logged = { start?: { surface: string; views: string[]; events: string[] }; entries?: Record<string, unknown>[]; dropped?: number }
+  const logged = async () => {
+    await sleep(400)
+    return browser.eval<Logged[]>(CALLS('tasks.navLog'))
+  }
+  const entries = async () => (await logged()).flatMap((c) => c.entries ?? [])
+  try {
+    await browser.load(`${base}/sidebar`, 380, 1000)
+    const first = await logged()
+    assert.equal(first.length, 1, 'once at the start')
+    assert.deepEqual(first[0].start?.views, ['list', 'details', 'statuses', 'menus'])
+    assert.deepEqual(first[0].start?.events.slice(0, 7), ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'auxclick', 'keydown', 'wheel'])
+    assert.equal((first[0].start as unknown as { surface: string }).surface, 'sidebar')
+
+    // A left click and typing are not logged.
+    await browser.click(await browser.point('.row', 'Send the board memo'))
+    await browser.eval(`document.querySelector('[aria-label="Close details"]').click()`)
+    await browser.eval(`document.querySelector('.quick-add .input')?.focus()`)
+    await browser.send('Input.insertText', { text: 'hello [' })
+    await browser.eval(`document.activeElement.blur()`)
+    assert.deepEqual(await entries(), [])
+
+    // The back button, pressed over a row: its pointer events (the page cancels pointerdown, so
+    // Chrome sends no mouse events after it), what the page did with each, and where.
+    const at = await browser.point('.row', 'Reply to Alice', true)
+    await browser.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'none', buttons: 0 })
+    await browser.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'back', buttons: 8, clickCount: 1 })
+    await browser.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'back', buttons: 0, clickCount: 1 })
+    const thumb = (await entries()).filter((e) => e.type === 'pointerdown' || e.type === 'pointerup')
+    assert.deepEqual(
+      thumb.map((e) => [e.surface, e.view, e.type, e.button, e.buttons, e.pointerType, e.mods, e.target, e.taken]),
+      [
+        ['sidebar', 'list', 'pointerdown', 3, 8, 'mouse', '', 'row', 'stopped'],
+        ['sidebar', 'list', 'pointerup', 3, 0, 'mouse', '', 'row', 'back']
+      ]
+    )
+
+    // Cmd+[ (what Logi Options+ can send) and Orca's own Cmd+Alt+Left, with what the page did.
+    const cmd = async (key: string, code: string, keyCode: number, modifiers: number) => {
+      await browser.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: keyCode, modifiers })
+      await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode, modifiers })
+    }
+    await cmd('[', 'BracketLeft', 219, 4)
+    await cmd('ArrowLeft', 'ArrowLeft', 37, 4 | 1)
+    const keys = (await entries()).filter((e) => e.type === 'keydown')
+    assert.deepEqual(keys.map((e) => [e.key, e.code, e.mods, e.taken]), [
+      ['[', 'BracketLeft', 'meta', 'back'],
+      ['ArrowLeft', 'ArrowLeft', 'meta+alt', 'none']
+    ])
+
+    // A sideways swipe of wheel events: one line for the burst.
+    for (let i = 0; i < 6; i += 1) await browser.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: at.x, y: at.y, deltaX: -120, deltaY: 0 })
+    const wheels = (await entries()).filter((e) => e.type === 'wheel')
+    assert.equal(wheels.length, 1)
+    assert.equal(wheels[0].deltaX, -120)
+  } finally {
+    await browser.close()
+    server.close()
+  }
+})
+
 // The README's screenshots and the plugin page's cover and screenshots, from the made-up tasks in
 // test/demo-data.ts (`?demo`) and a light and a dark theme (`?theme=`). Runs only when asked:
 // AGENT_TASKS_README_SHOTS=docs/screenshots npm run test:browser
