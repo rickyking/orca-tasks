@@ -101,7 +101,7 @@ docs/flyer/render.sh
    rickyking/orca-tasks` installs the highest `vX.Y.Z` tag.
 5. The repository needs the `orca-plugin` topic once
    (`gh repo edit rickyking/orca-tasks --add-topic orca-plugin`); the listing is at
-   <https://www.onorca.dev/plugins/rickyking/orca-tasks>.
+   <https://orca.dev/plugins/rickyking/orca-tasks>.
 
 The id is `agent-tasks` (ids starting `orca-` are reserved for Orca's own plugins), so it installs
 as `rickyking.agent-tasks`. The manifest leaves out `publisher`: Orca takes it from the

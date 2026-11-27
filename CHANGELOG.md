@@ -17,6 +17,8 @@ No change to what the plugin does, its data or the access it asks for.
   the plugin page's cover: `docs/flyer/render.sh` renders it to `docs/screenshots/cover.png`. It
   embeds Overpass and Overpass Mono (SIL Open Font License 1.1); `THIRD_PARTY_NOTICES.md` carries
   their licence.
+- Links to Orca's site point to `orca.dev`, where `onorca.dev` moved, and the directory listing
+  to `https://orca.dev/plugins/rickyking/orca-tasks`.
 
 ## 0.6.2
 

@@ -4,7 +4,7 @@
 
 Your tasks are spread over many apps: reminders on your phone, requests in chat, tickets in a
 tracker, flagged email, action items in meeting notes. Orca's own task view works with GitHub
-issues and Linear. Agent Tasks gives everything else one place in [Orca](https://www.onorca.dev),
+issues and Linear. Agent Tasks gives everything else one place in [Orca](https://orca.dev),
 and lets your agents work on it from both ends:
 
 1. **Collect.** An Orca bot runs on a schedule, reads the apps it has tools for, and adds what it
