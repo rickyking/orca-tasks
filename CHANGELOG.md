@@ -19,6 +19,8 @@ No change to what the plugin does, its data or the access it asks for.
   their licence.
 - Links to Orca's site point to `orca.dev`, where `onorca.dev` moved, and the directory listing
   to `https://orca.dev/plugins/rickyking/orca-tasks`.
+- Tests: a DevTools command in the browser test that gets no answer fails after 20 s, and CI
+  stops a job after 10 minutes, so a lost answer from Chrome no longer holds a run for hours.
 
 ## 0.6.2
 
